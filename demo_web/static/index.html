@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Poliamor · Laboratorio de agentes</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a href="/" class="brand" aria-label="Poliamor, inicio"><span class="brand-mark" aria-hidden="true">p.</span> NETCORECONF <span class="year">/ 2026</span></a>
+    <div class="live-label"><span class="dot"></span><span id="hosting-label">CONECTANDO</span></div>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="title">
+      <div><p class="eyebrow">EL LABORATORIO / DEMO 01</p><h1 id="title">Una cena.<br>Muchas <em>conexiones.</em></h1></div>
+      <p class="intro-copy">Poliamor en los tiempos de la IA.<br>Una petición, un agente y sus herramientas.<br><strong>Lo que ves aquí está ocurriendo de verdad.</strong></p>
+    </section>
+    <nav class="chapters" aria-label="Estado de las demos">
+      <span class="chapter current"><b>01</b> Herramientas MCP <small>DISPONIBLE</small></span>
+      <span class="chapter pending"><b>02</b> Agenda · as_tool <small>PENDIENTE</small></span>
+      <span class="chapter pending"><b>03</b> Presupuesto · A2A <small>PENDIENTE</small></span>
+    </nav>
+    <div class="workspace">
+      <section class="request-panel" aria-labelledby="request-title">
+        <p class="eyebrow">01 / LA PETICIÓN</p>
+        <h2 id="request-title">Organiza la cena.</h2>
+        <p class="muted">Datos ficticios. Llamadas reales.</p>
+        <div class="presets" aria-label="Escenarios de ensayo">
+          <button type="button" id="preset-book" class="preset selected" aria-pressed="true">Con reserva</button>
+          <button type="button" id="preset-empty" class="preset" aria-pressed="false">Sin disponibilidad</button>
+        </div>
+        <form id="dinner-form">
+          <label for="near">Zona</label>
+          <input id="near" name="near" value="zona-demo" required maxlength="100">
+          <div class="field-row">
+            <div><label for="people">Comensales</label><input id="people" type="number" value="12" min="1" max="20" step="1" required></div>
+            <div><label for="price">Menú / persona (€)</label><input id="price" type="number" value="50" min="0.01" max="1000" step="0.01" required></div>
+          </div>
+          <label for="when">Fecha y hora</label>
+          <input id="when" type="datetime-local" value="2026-10-23T20:30" required>
+          <label for="offset">Zona horaria (UTC)</label>
+          <select id="offset"><option value="+02:00">+02:00 · Madrid, verano</option><option value="+01:00">+01:00 · Madrid, invierno</option><option value="+00:00">+00:00 · UTC</option></select>
+          <p class="field-help">La demo MCP limita solo el menú. La bebida va aparte. Los restaurantes de ensayo abren el viernes.</p>
+          <button class="run-button" id="run" disabled>Conectando… <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="server-note" id="hosting-note">Preparando conexión con el servidor de la demo.</p>
+      </section>
+      <section class="activity-panel" aria-labelledby="activity-title">
+        <div class="section-heading"><div><p class="eyebrow">02 / LAS CONEXIONES</p><h2 id="activity-title">De intención a acción.</h2></div><span id="status" class="status" role="status">Preparando</span></div>
+        <div class="topology" aria-label="Participantes de la demo">
+          <div class="node" id="node-request"><span class="node-index">TÚ</span><strong>La petición</strong><small>Formulario local</small></div>
+          <span class="connector" aria-hidden="true">→</span>
+          <div class="node" id="node-agent"><span class="node-index">AGENTE</span><strong>Cena</strong><small>Agent Framework</small></div>
+          <span class="connector" aria-hidden="true">⇄</span>
+          <div class="node" id="node-mcp"><span class="node-index">HERRAMIENTAS</span><strong>Restaurantes</strong><small>MCP · Azure Functions</small></div>
+          <div class="model-line" id="node-model"><span aria-hidden="true">↳</span> Microsoft Foundry <b>gpt-4.1-mini</b></div>
+        </div>
+        <div class="trace-heading"><h3>Registro de esta ejecución</h3><span id="elapsed">00:00</span></div>
+        <p id="empty-state" class="empty-state"><span aria-hidden="true">↗</span> Lanza una petición para seguir las llamadas.<small>Verás la comprobación MCP previa y, si hay candidatos, las llamadas del agente al modelo y a search / book.</small></p>
+        <ol id="events" class="events" aria-label="Llamadas reales de esta ejecución"></ol>
+        <div id="notice" class="notice" role="alert" hidden></div>
+        <section id="result" class="result" aria-labelledby="result-title" hidden>
+          <p class="eyebrow">03 / EL RESULTADO</p><h2 id="result-title">Reserva ficticia confirmada.</h2>
+          <div id="booking-summary"></div>
+          <details><summary>Respuesta completa del agente</summary><p id="answer"></p><pre id="result-json"></pre></details>
+        </section>
+        <div class="trace-actions"><button type="button" id="clear" class="text-button">Limpiar vista</button><button type="button" id="download" class="text-button" disabled>Descargar registro ↓</button><span>Solo metadatos y herramientas; sin razonamiento interno.</span></div>
+      </section>
+    </div>
+  </main>
+  <footer><span>POLIAMOR EN LOS TIEMPOS DE LA IA</span><span>Sin reservas reales. Sin eventos inventados. Con conexiones reales.</span></footer>
+</body>
+</html>

@@ -6,12 +6,24 @@ infra:
   path: infra
 
 hooks:
+  prepackage:
+    shell: pwsh
+    run: ./scripts/package-demo-web.ps1
+    interactive: false
   preprovision:
     shell: pwsh
     run: ./scripts/check-context.ps1
     interactive: false
+  postdeploy:
+    shell: pwsh
+    run: ./scripts/configure-mcp.ps1
+    interactive: false
 
 services:
+  web:
+    project: ./.azure/web-package
+    language: python
+    host: appservice
   restaurantes:
     project: ./src/restaurantes
     language: python

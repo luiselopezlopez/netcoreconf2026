@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Orquestador: Azure Functions",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {"host": "127.0.0.1", "port": 9091},
+      "preLaunchTask": "functions: orquestador",
+      "justMyCode": true
+    }
+  ]
+}

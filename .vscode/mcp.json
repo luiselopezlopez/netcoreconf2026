@@ -1,0 +1,19 @@
+{
+  "inputs": [
+    {
+      "id": "restaurantes-mcp-key",
+      "type": "promptString",
+      "description": "Clave de sistema mcp_extension de Restaurantes (no clave maestra ni de funcion)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "restaurantes": {
+      "type": "http",
+      "url": "https://func-restaurantes-wnmjunhobdnpc.azurewebsites.net/runtime/webhooks/mcp",
+      "headers": {
+        "x-functions-key": "${input:restaurantes-mcp-key}"
+      }
+    }
+  }
+}
