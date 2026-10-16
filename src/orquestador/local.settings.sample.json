@@ -6,6 +6,8 @@
     "AZURE_AI_PROJECT_ENDPOINT": "",
     "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-4.1-mini",
     "RESTAURANTES_MCP_URL": "https://func-restaurantes-wnmjunhobdnpc.azurewebsites.net/runtime/webhooks/mcp",
-    "RESTAURANTES_MCP_KEY": ""
+    "RESTAURANTES_MCP_KEY": "",
+    "PRESUPUESTO_A2A_URL": "http://localhost:7073/a2a",
+    "PRESUPUESTO_A2A_KEY": ""
   }
 }

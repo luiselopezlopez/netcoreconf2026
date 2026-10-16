@@ -2,10 +2,12 @@ $ErrorActionPreference = 'Stop'
 
 & (Join-Path $PSScriptRoot 'check-context.ps1')
 if (-not $env:AZURE_RESOURCE_GROUP -or -not $env:SERVICE_RESTAURANTES_NAME -or
-    -not $env:SERVICE_ORQUESTADOR_NAME -or -not $env:SERVICE_RESTAURANTES_URI) {
-    throw 'Faltan outputs del entorno azd para configurar MCP.'
+    -not $env:SERVICE_ORQUESTADOR_NAME -or -not $env:SERVICE_RESTAURANTES_URI -or
+    -not $env:SERVICE_PRESUPUESTO_NAME -or -not $env:SERVICE_PRESUPUESTO_URI) {
+    throw 'Faltan outputs del entorno azd para configurar MCP y A2A.'
 }
 $key = $null
+$budgetKey = $null
 try {
     $key = az functionapp keys list --subscription $env:AZURE_SUBSCRIPTION_ID `
         --resource-group $env:AZURE_RESOURCE_GROUP --name $env:SERVICE_RESTAURANTES_NAME `
@@ -21,7 +23,27 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'No se pudo configurar la conexion MCP del orquestador.'
     }
-    Write-Host 'Conexion MCP configurada sin mostrar la clave.'
+    $budgetKey = az functionapp keys list --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --resource-group $env:AZURE_RESOURCE_GROUP --name $env:SERVICE_PRESUPUESTO_NAME `
+        --query functionKeys.default --output tsv --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($budgetKey)) {
+        throw 'No se pudo obtener la clave Function de Presupuesto.'
+    }
+    az functionapp config appsettings set --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --resource-group $env:AZURE_RESOURCE_GROUP --name $env:SERVICE_ORQUESTADOR_NAME `
+        --settings "PRESUPUESTO_A2A_KEY=$budgetKey" `
+        "PRESUPUESTO_A2A_URL=$($env:SERVICE_PRESUPUESTO_URI.TrimEnd('/'))/a2a" `
+        --output none --only-show-errors
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo configurar A2A en Orquestador.' }
+    if ($env:SERVICE_WEB_NAME) {
+        az webapp config appsettings set --subscription $env:AZURE_SUBSCRIPTION_ID `
+            --resource-group $env:AZURE_RESOURCE_GROUP --name $env:SERVICE_WEB_NAME `
+            --settings "PRESUPUESTO_A2A_KEY=$budgetKey" `
+            "PRESUPUESTO_A2A_URL=$($env:SERVICE_PRESUPUESTO_URI.TrimEnd('/'))/a2a" `
+            --output none --only-show-errors
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo configurar A2A en la web.' }
+    }
+    Write-Host 'Conexiones MCP y A2A configuradas sin mostrar claves.'
 } finally {
-    Remove-Variable key
+    Remove-Variable key, budgetKey
 }

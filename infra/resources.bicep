@@ -173,7 +173,7 @@ resource apps 'Microsoft.Web/sites@2024-04-01' = [for (service, i) in services: 
       }
       scaleAndConcurrency: {
         instanceMemoryMB: 2048
-        maximumInstanceCount: 10
+        maximumInstanceCount: service == 'presupuesto' ? 1 : 10
         triggers: {
           http: {
             perInstanceConcurrency: 1
@@ -185,6 +185,10 @@ resource apps 'Microsoft.Web/sites@2024-04-01' = [for (service, i) in services: 
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       appSettings: [
+        {
+          name: 'FUNCTIONS_WORKER_PROCESS_COUNT'
+          value: '1'
+        }
         {
           name: 'AzureWebJobsStorage__accountName'
           value: storage.name

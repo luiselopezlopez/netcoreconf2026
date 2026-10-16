@@ -9,7 +9,7 @@ foreach ($name in @('server.py', 'wsgi.py', 'requirements.txt')) {
 foreach ($name in @('index.html', 'app.js', 'style.css')) {
     Copy-Item (Join-Path $root "demo_web\static\$name") (Join-Path $target "demo_web\static\$name") -Force
 }
-foreach ($name in @('agents.py', 'function_app.py', 'requirements.txt')) {
+foreach ($name in @('agents.py', 'budget_peer.py', 'data.py', 'telemetry.py', 'function_app.py', 'requirements.txt')) {
     Copy-Item (Join-Path $root "src\orquestador\$name") (Join-Path $target "src\orquestador\$name") -Force
 }
 Copy-Item (Join-Path $root 'demo_web\package-requirements.txt') (Join-Path $target 'requirements.txt') -Force

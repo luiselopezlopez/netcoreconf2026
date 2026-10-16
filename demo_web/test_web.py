@@ -1,10 +1,12 @@
 import json
 import unittest
+from unittest.mock import patch
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 
 from demo_web.server import LiveSpans, create_app
+from telemetry import MetadataExporter
 
 BODY = {"near": "zona-demo", "people": 12, "max_per_head": 50,
         "when": "2026-10-23T20:30:00+02:00"}
@@ -55,7 +57,8 @@ class WebTest(unittest.TestCase):
     def test_session(self):
         code, body, _ = self.request("GET", "/api/config")
         self.assertEqual(code, 200)
-        self.assertEqual(json.loads(body), {"token": self.demo.token, "mode": "mcp", "hosting": "local"})
+        self.assertEqual(json.loads(body), {"token": self.demo.token, "mode": "mcp",
+                                          "modes": ["mcp", "tools", "a2a"], "hosting": "local"})
 
     def test_host_and_origin(self):
         self.assertEqual(self.request("GET", "/", headers={"Host": "attacker.invalid"})[0], 403)
@@ -64,7 +67,8 @@ class WebTest(unittest.TestCase):
             "X-Demo-Token": self.demo.token, "Origin": "https://attacker.invalid"})[0], 403)
 
     def test_validation(self):
-        for body in ({}, {**BODY, "mode": "a2a"}, {**BODY, "people": True},
+        for body in ({}, {**BODY, "mode": "unknown"}, {**BODY, "people": True},
+                     {**BODY, "mode": "a2a", "includes_drinks": "yes"},
                      {**BODY, "near": " "}, {**BODY, "when": "2026-10-23"},
                      {**BODY, "max_per_head": float("inf")}, {**BODY, "unknown": 1}):
             with self.subTest(body=body):
@@ -78,12 +82,32 @@ class WebTest(unittest.TestCase):
         self.assertIn("application/x-ndjson", headers["Content-Type"])
         events = [json.loads(line) for line in body.splitlines()]
         self.assertEqual([event["type"] for event in events],
-                         ["started", "span_start", "span_end", "result"])
-        self.assertEqual(events[1]["id"], events[2]["id"])
-        self.assertEqual(events[2]["details"]["gen_ai.tool.call.arguments"]["people"], 12)
+                         ["started", "span_start", "span_start", "span_end", "span_end", "result"])
+        self.assertEqual(events[2]["id"], events[3]["id"])
+        self.assertEqual(events[2]["parent"], events[1]["id"])
+        self.assertEqual(events[3]["details"]["gen_ai.tool.call.arguments"]["people"], 12)
+        self.assertEqual(events[-1]["data"]["trace_id"], events[1]["trace_id"])
         self.assertNotIn(b"never-publish", body)
         self.assertIsNone(events[-1]["data"]["booking"])
         self.assertFalse(self.demo.run_lock.locked())
+        code, body, _ = self.post({**BODY, "mode": "tools"})
+        self.assertEqual(code, 200)
+        tool = next(json.loads(line) for line in body.splitlines()
+                    if b'gen_ai.tool.call.arguments' in line)
+        self.assertEqual(tool["details"]["gen_ai.tool.call.arguments"]["mode"], "tools")
+        code, body, _ = self.post({**BODY, "mode": "a2a", "includes_drinks": False})
+        self.assertEqual(code, 200)
+        tool = next(json.loads(line) for line in body.splitlines()
+                    if b'gen_ai.tool.call.arguments' in line)
+        self.assertEqual(tool["details"]["gen_ai.tool.call.arguments"]["mode"], "a2a")
+        self.assertFalse(tool["details"]["gen_ai.tool.call.arguments"]["includes_drinks"])
+        source = ReadableSpan("chat", attributes={"gen_ai.usage.input_tokens": 12,
+                              "gen_ai.tool.call.arguments": "private", "http.url": "private"})
+        with patch("telemetry.AzureMonitorTraceExporter.export") as export:
+            MetadataExporter.export(object.__new__(MetadataExporter), [source])
+        sanitized = export.call_args.args[0][0]
+        self.assertEqual(dict(sanitized.attributes), {"gen_ai.usage.input_tokens": 12})
+        self.assertEqual(sanitized.events, ())
 
     def test_concurrency(self):
         with self.demo.run_lock:

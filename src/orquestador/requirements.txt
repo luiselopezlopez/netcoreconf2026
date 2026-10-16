@@ -1,5 +1,6 @@
 azure-functions==1.25.0
 agent-framework-core==1.0.0rc6
+agent-framework-foundry==1.0.0rc6
 agent-framework-azure-ai==1.0.0rc6
 agent-framework-openai==1.0.0rc6
 azure-ai-projects==2.4.0
@@ -8,3 +9,8 @@ mcp==1.26.0
 httpx==0.28.1
 pydantic==2.14.1
 debugpy==1.8.22
+azure-monitor-opentelemetry-exporter==1.0.0b58
+opentelemetry-sdk==1.45.1
+a2a-sdk==0.3.26
+protobuf==5.29.6
+googleapis-common-protos==1.70.0

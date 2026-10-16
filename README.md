@@ -3,13 +3,16 @@
 Demos para NetCoreConf: MCP, agents as tools y Agent2Agent, con Microsoft
 Agent Framework y Azure Functions.
 
-## Estado: fase 2
+## Estado: fase 4 implementada; publicacion A2A pendiente
 
 Las fases 1 y 2 estan desplegadas y verificadas el **2026-10-16** en `MCT Luise 2`,
 grupo `rg-poliamor-demo`, region `spaincentral`.
 La demo MCP ya busca y reserva restaurantes ficticios mediante el agente
 Cena. La web local y la web en Azure permiten ver trazas del framework en directo.
-Agenda, exportacion de trazas a Azure y negociacion A2A todavia no estan implementadas.
+Agenda y negociacion A2A estan implementadas en el codigo. La fase 4 se ha
+probado con los tres agentes y el modelo real de Foundry, MCP de Azure y
+Presupuesto local. Los cambios nuevos todavia requieren publicacion en Azure;
+no confundir esta validacion con una prueba del hosting desplegado.
 Las fases siguientes se implementan despues de revisar la anterior:
 
 1. Esqueleto, infraestructura y tres Functions funcionando.
@@ -76,18 +79,26 @@ como garantia de gratuidad.
 Versiones verificadas en fase 1: Python 3.12.10, Core Tools 4.13.0, azd 1.32.0,
 Bicep 0.41.2 y `azure-functions==1.25.0`.
 Cada app tiene su propio requirements. Orquestador usa los componentes
-oficiales `agent-framework-core`, `agent-framework-azure-ai` y
-`agent-framework-openai`, todos fijados en `1.0.0rc6`, sin el metapaquete
-que instala integraciones adicionales. El conjunto con `azure-ai-projects==2.4.0`,
-`azure-identity==1.26.0` y `mcp==1.26.0` se ha probado en Python 3.12 y Azure.
+oficiales `agent-framework-core`, `agent-framework-foundry`,
+`agent-framework-azure-ai` y `agent-framework-openai`, todos fijados en
+`1.0.0rc6`, sin el metapaquete que instala integraciones adicionales. El
+conjunto con `azure-ai-projects==2.4.0`, `azure-identity==1.26.0` y
+`mcp==1.26.0` se ha probado en Python 3.12 y Azure.
 Las versiones exactas estan en [requirements.txt](src/orquestador/requirements.txt).
 
-**Compatibilidad:** `AzureAIAgentClient` esta deprecated y utiliza Agents V1.
-Se mantiene el cliente previsto por la demo, comprobado contra este proyecto;
-no se presenta como recomendacion para proyectos nuevos. Cada peticion con
-candidatos crea un agente/hilo transitorio y los elimina al terminar,
-tambien en caso de error.
-A2A y exportacion OpenTelemetry se fijaran en sus fases correspondientes.
+**Compatibilidad:** se usa `FoundryChatClient` con `Agent(client=...)` y
+`as_tool()`, sin Agents V1 ni hilos remotos. Todos los componentes del framework
+se fijan en `1.0.0rc6`; no mezclar con paquetes globales de otra version.
+A2A usa `a2a-sdk==0.3.26`, protocolo `0.3.0`, con el request handler oficial
+JSON-RPC y `AgentExecutor`. No se usa la integracion A2A 1.x del entorno global.
+Se fijan tambien `protobuf==5.29.6` y `googleapis-common-protos==1.70.0`
+para evitar el conflicto de gencode Protobuf 6 con el runtime 5 del worker
+Functions comprobado con Core Tools 4.16.0.
+Instalar tambien los requirements de Presupuesto al ejecutar sus pruebas:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r .\demo_web\requirements.txt -r .\src\presupuesto\requirements.txt
+```
 
 La instalacion global de Core Tools de esta maquina devuelve un error al
 iniciar: falta `Azure.Security.KeyVault.Secrets, Version=4.6.0.0`.
@@ -135,8 +146,8 @@ seleccionado en Foundry Toolkit. Las variables del proceso se restauran al salir
 3. Mostrar la reserva ficticia y el menu + bebida por persona. En MCP el
    limite solo se aplica al menu; no hay negociacion presupuestaria A2A.
 4. Elegir **Sin disponibilidad** y repetir: solo se ejecuta el preflight
-   MCP, sin modelo ni reserva. Los pasos de Agenda y Presupuesto son
-   pendientes, no botones funcionales ni secuencias simuladas.
+   MCP, sin modelo ni reserva. Las pestanas **02** y **03** ejecutan los
+   escenarios de Agenda y A2A descritos a continuacion.
 5. **Descargar registro** guarda el ensayo visible en JSON sin credenciales.
    **Limpiar vista** borra la pantalla, no cancela ni deshace ejecuciones.
 
@@ -162,6 +173,105 @@ Pruebas locales del backend, sin consumo Azure:
 ```powershell
 .\.venv\Scripts\python.exe -m unittest demo_web.test_web
 ```
+
+## Demo 3: Presupuesto remoto por Agent2Agent
+
+La pestana **03 · Presupuesto A2A** mantiene Agenda como `as_tool()` y
+Restaurantes como MCP. Presupuesto es otro proceso, con su propia identidad
+administrada y llamadas al mismo deployment de Foundry. No es una funcion
+local disfrazada de agente remoto.
+Cena invoca `negociar_cena`: esta herramienta fija el orden de las
+delegaciones y reutiliza los candidatos reales del preflight MCP, evitando
+otra busqueda y turnos de modelo para avanzar entre propuestas.
+
+**Guion tecnico (web):**
+
+1. Seleccionar **03** y **Con reserva**: 12 ponentes, viernes 23/10/2026,
+   20:30, zona-demo, limite de 45 EUR y **El limite incluye bebida** marcado.
+2. Cena delega la disponibilidad en Agenda. Solo continua si la hora exacta
+   esta libre; no modifica fecha, grupo ni hora.
+3. Abrir `A2A -> descubrir Agent Card` y las llamadas `message/send`.
+   La primera propuesta para La Plaza da lugar a
+   `submitted -> working -> input-required`.
+4. Presupuesto pregunta si el limite incluye bebida. Cena responde con el
+   valor de la casilla, usando **el mismo taskId y contextId**. No se simula
+   una pausa del usuario: la casilla es la respuesta previamente elegida.
+5. La tarea continua `working -> completed`. El artefacto rechaza La Plaza:
+   42 + 6 = **48 EUR/persona**, por encima del limite de 45 EUR.
+6. Cena propone El Patio en una nueva tarea A2A. Presupuesto consulta su
+   saldo ficticio (600 EUR) y aprueba 38 + 5 = **43 EUR/persona**, total
+   **516 EUR**. Solo entonces se permite `book_after_agenda` por MCP.
+7. La respuesta y el registro descargable contienen `budget`, intercambios
+   `a2a`, estados reales y IDs de tarea. Nunca contienen claves ni headers.
+
+Un rechazo de negocio es una tarea **completed** con `approved: false`,
+no un error de transporte. Los fallos de ejecucion usan **failed** y bloquean
+la reserva. El cliente comprueba el endpoint anunciado en la Agent Card,
+la continuidad de la tarea, el artefacto y los importes; no confia en el
+texto redactado por el modelo para autorizar la reserva.
+
+**Variantes:** desmarcar bebida permite aprobar La Plaza a 42 EUR/persona.
+Con limite de 40 EUR y bebida, El Patio se rechaza y no se reserva
+(`status: unavailable`, HTTP 409 en Orquestador). Una hora sin franja de
+Agenda o una zona sin restaurantes no llama a Presupuesto.
+
+**Contrato de Presupuesto**, protegido con `x-functions-key`:
+
+- `GET /.well-known/agent-card.json`, alias `/.well-known/agent.json`.
+- `POST /a2a`: JSON-RPC `message/send`, `tasks/get` y `tasks/cancel`.
+- `GET /api/health`: conserva el contrato anterior.
+- Skill `consultar_saldo`: mensaje de texto JSON `{"skill":"consultar_saldo"}`.
+- Skill `aprobar_gasto`: mensaje JSON con `restaurant_id`, `people`,
+  `menu_per_head`, `drink_per_head`, `max_per_head` y `skill`.
+  Omitir `includes_drinks` provoca `input-required`; continuar con
+  `{"includes_drinks":true}` en la misma tarea.
+
+Se usa la alternativa de **clave de Function** prevista en el documento de
+referencia para evitar otro registro Entra y permisos adicionales. Las
+identidades administradas siguen autenticando a cada agente ante Foundry.
+El hook [configure-mcp.ps1](scripts/configure-mcp.ps1) configura tambien A2A
+en Orquestador y la web; las claves no son outputs ni se envian al navegador.
+
+Las ultimas 128 tareas viven **solo en memoria**. Presupuesto se limita a
+una instancia y un worker para que la aclaracion alcance el mismo proceso.
+Un reinicio, cold start o eviction pierde la tarea: el SDK devuelve error
+en vez de aprobar por defecto. Es una demo sin persistencia, no un servicio
+de aprobaciones distribuido ni un sistema de cargos.
+
+**Publicar estos cambios en el entorno existente**, sin otro proyecto Foundry:
+
+```powershell
+$env:AZD_CONFIG_DIR = Join-Path $PWD '.azure\azd-config'
+azd provision --environment poliamor-demo --no-prompt
+azd deploy --all --environment poliamor-demo --no-prompt
+```
+
+El provision actualiza tambien la configuracion de escala de Presupuesto.
+La web existente recibe su URL/clave A2A mediante el hook postdeploy, sin
+recrear su registro Entra ni desprotegerla. Para una web nueva se sigue
+usando [provision-demo-web.ps1](scripts/provision-demo-web.ps1).
+No ejecutar los comandos durante una demo en curso.
+
+Tras publicar, ejecutar el guion de consola desde la raiz:
+
+```powershell
+.\scripts\demo3.ps1
+```
+
+[demo3.ps1](scripts/demo3.ps1) valida la suscripcion activa, llama a
+`mode=a2a` y exige rechazo de La Plaza, aprobacion de El Patio y reserva.
+La alternativa HTTP es enviar el mismo contrato a `/api/cena`:
+
+```json
+{"mode":"a2a","near":"zona-demo","people":12,"max_per_head":45,
+ "when":"2026-10-23T20:30:00+02:00","includes_drinks":true}
+```
+
+Para probar Presupuesto localmente, instalar sus requirements, activar
+`.venv`, cargar las variables de Foundry del entorno y usar Core Tools
+`func start --port 7073` desde `src/presupuesto`. La web arranca con
+[start-demo-web.ps1](scripts/start-demo-web.ps1), que por defecto usa el
+Presupuesto publicado en Azure. No publicar el host local en Internet.
 
 ## Desplegar los servicios Azure
 
@@ -219,7 +329,8 @@ No se deshabilita la autenticacion para resolver fallos de acceso.
 prepara una carpeta ignorada con una lista cerrada de archivos:
 UI/backend, requirements y los dos modulos de Orquestador. No empaqueta el
 repositorio, `.env`, configuraciones locales ni documentos de la presentacion.
-Agenda y A2A siguen pendientes; desplegar la web no las implementa.
+El paquete incluye Agenda y el cliente A2A. Presupuesto se publica como una
+Function independiente; no basta con desplegar unicamente la web.
 
 **Coste consultado para B1 Linux en Spain Central:** 0,0158 EUR/h, unos
 11,53 EUR por 730 horas, antes de impuestos y sin incluir los consumos
@@ -420,7 +531,7 @@ Solicitar `POST http://localhost:7071/api/cena` con el mismo cuerpo para
 alcanzar un breakpoint. No se usa Agent Inspector: el host es Azure Functions.
 La tarea referencia la copia aislada de Core Tools descrita anteriormente.
 
-### Verificacion realizada
+### Verificacion de fase 2 (historica)
 
 - Tres smoke tests y `pip check`: correctos.
 - Tres health Azure: 200 con clave y 401 sin clave.
@@ -435,17 +546,39 @@ La tarea referencia la copia aislada de Core Tools descrita anteriormente.
 - Python propio, incluyendo smoke y excluyendo datos: Restaurantes 119
   lineas, Orquestador 189 y Presupuesto 33; menos de 200 por app.
 
+### Verificacion de fase 4
+
+- 14 smoke tests de Functions y web, `pip check`, sintaxis JavaScript y
+  PowerShell: correctos. Pruebas de aprobacion, rechazo, saldo insuficiente,
+  aclaracion invalida, continuidad de tarea y bloqueo de negociacion repetida.
+- Validacion ARM del Bicep base, incluida la instancia unica de Presupuesto:
+  correcta, sin desplegar cambios.
+- Tres agentes reales con Foundry y MCP Azure; Presupuesto servido por
+  un adaptador HTTP local del mismo handler Function. El guion de 45 EUR
+  con bebida rechazo La Plaza y reservo El Patio en **28,28 s** tras warmup.
+  Sin bebida aprobo La Plaza (**34,72 s** en el primer ensayo); con limite
+  de 40 EUR rechazo El Patio y no reservo (**17,01 s**). Son mediciones,
+  no un SLA ni una garantia universal de menos de 30 s.
+- La web se ensaya tambien en navegador: pestana A2A, cuatro intercambios
+  `message/send`, estados reales, rechazo y aprobacion visibles.
+- El host Functions local indexo las cuatro rutas tras fijar Protobuf.
+  No se declara validado como hosting estable: este equipo no tenia Storage
+  local configurado y Core Tools reciclo el host. El ensayo HTTP uso el
+  adaptador local anterior, no una Function desplegada en Azure.
+- Publicacion de fase 4, autenticacion A2A entre Functions Azure y prueba
+  completa desde la web Azure: **pendientes**.
+
 ## Seguridad y siguientes fases
 
 - Foundry y Storage usan identidades; no hay claves de esos servicios.
 - Las llamadas HTTP usan claves limitadas. MCP usa `mcp_extension`
-  (clave **de sistema**, no maestra); A2A usara clave de funcion.
-- A2A publicara `/.well-known/agent-card.json` y el alias de las slides,
+  (clave **de sistema**, no maestra); A2A usa clave de funcion.
+- A2A publica `/.well-known/agent-card.json` y el alias de las slides,
   `/.well-known/agent.json`.
-- La traza del Agent Framework, los scripts de demos y su guion tecnico
-  aun no estan implementados; la demo MCP si esta operativa.
-- La negociacion A2A sera efimera: un reciclado puede perder la Task.
-  El guion reiniciara explicitamente; no se promete continuidad durable.
+- La web muestra spans reales, incluidos los intercambios A2A. Los scripts
+  Bash completos y el ensayo final en Azure quedan para fase 5.
+- La negociacion A2A es efimera: un reciclado puede perder la Task.
+  Hay que reiniciar la demo explicitamente; no se promete continuidad durable.
 
 ## Apagar y eliminar el entorno
 

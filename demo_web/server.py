@@ -13,6 +13,7 @@ from time import monotonic
 from agent_framework.observability import enable_instrumentation
 from flask import Flask, Response, jsonify, request, stream_with_context
 from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from pydantic import ValidationError
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))
 sys.path.insert(0, str(ROOT.parent / "src" / "orquestador"))
 from src.orquestador.function_app import Dinner, organize  # noqa: E402
+from telemetry import add_monitor  # noqa: E402
 
 EVENTS: ContextVar[queue.Queue | None] = ContextVar("demo_events", default=None)
 LOGGER = logging.getLogger("demo_web")
@@ -45,7 +47,8 @@ class LiveSpans(SpanProcessor):
         with self.lock:
             self.pending[span_id] = events
         events.put({"type": "span_start", "id": str(span_id), "name": span.name,
-                    "parent": str(span.parent.span_id) if span.parent else None})
+                    "parent": str(span.parent.span_id) if span.parent else None,
+                    "trace_id": format(span.get_span_context().trace_id, "032x")})
 
     def on_end(self, span: ReadableSpan):
         context = span.get_span_context()
@@ -83,9 +86,12 @@ class Demo:
         started = monotonic()
         events.put({"type": "started"})
         try:
-            result = asyncio.run(self.runner(
-                near=dinner.near, people=dinner.people,
-                max_per_head=dinner.max_per_head, when=dinner.when))
+            with trace.get_tracer("cena").start_as_current_span("cena.request") as span:
+                result = asyncio.run(self.runner(
+                    near=dinner.near, people=dinner.people,
+                    max_per_head=dinner.max_per_head, when=dinner.when, mode=dinner.mode,
+                    **({"includes_drinks": dinner.includes_drinks} if dinner.mode == "a2a" else {})))
+                result["trace_id"] = format(span.get_span_context().trace_id, "032x")
             events.put({"type": "result", "data": result,
                         "duration_ms": round((monotonic() - started) * 1000)})
         except Exception:
@@ -99,8 +105,9 @@ class Demo:
 
 
 def configure_tracing():
-    provider = TracerProvider()
+    provider = TracerProvider(resource=Resource.create({"service.name": "demo-web"}))
     provider.add_span_processor(LiveSpans())
+    add_monitor(provider)
     trace.set_tracer_provider(provider)
     enable_instrumentation(enable_sensitive_data=True)
     return provider
@@ -148,7 +155,8 @@ def create_app(runner=organize, *, port=8080, cloud_host=None, allowed_user=None
 
     @app.get("/api/config")
     def config():
-        return jsonify(token=demo.token, mode="mcp", hosting="azure" if cloud_host else "local")
+        return jsonify(token=demo.token, mode="mcp", modes=["mcp", "tools", "a2a"],
+                       hosting="azure" if cloud_host else "local")
 
     @app.get("/")
     @app.get("/app.js")
@@ -173,8 +181,8 @@ def create_app(runner=organize, *, port=8080, cloud_host=None, allowed_user=None
             if request.mimetype != "application/json":
                 raise ValueError("Se requiere JSON.")
             dinner = Dinner.model_validate_json(request.get_data())
-            if dinner.mode != "mcp":
-                raise ValueError("Solo se admite MCP.")
+            if dinner.mode not in ("mcp", "tools", "a2a"):
+                raise ValueError("Solo se admite MCP, tools o a2a.")
         except (ValueError, ValidationError):
             LOGGER.warning("Peticion de demo invalida.")
             return jsonify(error="Revisa zona, comensales (1-20), precio y fecha con hora."), 400

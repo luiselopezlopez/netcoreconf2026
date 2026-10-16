@@ -15,13 +15,13 @@
   </header>
   <main>
     <section class="intro" aria-labelledby="title">
-      <div><p class="eyebrow">EL LABORATORIO / DEMO 01</p><h1 id="title">Una cena.<br>Muchas <em>conexiones.</em></h1></div>
+      <div><p class="eyebrow" id="demo-label">EL LABORATORIO / DEMO 01</p><h1 id="title">Una cena.<br>Muchas <em>conexiones.</em></h1></div>
       <p class="intro-copy">Poliamor en los tiempos de la IA.<br>Una petición, un agente y sus herramientas.<br><strong>Lo que ves aquí está ocurriendo de verdad.</strong></p>
     </section>
     <nav class="chapters" aria-label="Estado de las demos">
-      <span class="chapter current"><b>01</b> Herramientas MCP <small>DISPONIBLE</small></span>
-      <span class="chapter pending"><b>02</b> Agenda · as_tool <small>PENDIENTE</small></span>
-      <span class="chapter pending"><b>03</b> Presupuesto · A2A <small>PENDIENTE</small></span>
+      <button type="button" class="chapter current" id="chapter-mcp" aria-pressed="true"><b>01</b> Herramientas MCP <small>DISPONIBLE</small></button>
+      <button type="button" class="chapter" id="chapter-tools" aria-pressed="false"><b>02</b> Agenda · as_tool <small>DISPONIBLE</small></button>
+      <button type="button" class="chapter" id="chapter-a2a" aria-pressed="false"><b>03</b> Presupuesto · A2A <small>DISPONIBLE</small></button>
     </nav>
     <div class="workspace">
       <section class="request-panel" aria-labelledby="request-title">
@@ -33,17 +33,20 @@
           <button type="button" id="preset-empty" class="preset" aria-pressed="false">Sin disponibilidad</button>
         </div>
         <form id="dinner-form">
+          <label for="mode">Caso de demo</label>
+          <select id="mode" name="mode"><option value="mcp">01 · Solo herramientas MCP</option><option value="tools">02 · Agenda como herramienta</option><option value="a2a">03 · Presupuesto remoto A2A</option></select>
           <label for="near">Zona</label>
           <input id="near" name="near" value="zona-demo" required maxlength="100">
           <div class="field-row">
             <div><label for="people">Comensales</label><input id="people" type="number" value="12" min="1" max="20" step="1" required></div>
-            <div><label for="price">Menú / persona (€)</label><input id="price" type="number" value="50" min="0.01" max="1000" step="0.01" required></div>
+            <div><label for="price" id="price-label">Menú / persona (€)</label><input id="price" type="number" value="50" min="0.01" max="1000" step="0.01" required></div>
           </div>
+          <label class="check-label" id="drinks-field" hidden><input id="includes-drinks" type="checkbox" checked> El límite incluye bebida</label>
           <label for="when">Fecha y hora</label>
           <input id="when" type="datetime-local" value="2026-10-23T20:30" required>
           <label for="offset">Zona horaria (UTC)</label>
           <select id="offset"><option value="+02:00">+02:00 · Madrid, verano</option><option value="+01:00">+01:00 · Madrid, invierno</option><option value="+00:00">+00:00 · UTC</option></select>
-          <p class="field-help">La demo MCP limita solo el menú. La bebida va aparte. Los restaurantes de ensayo abren el viernes.</p>
+          <p class="field-help" id="price-help">El límite solo incluye el menú, bebida aparte. Agenda tiene huecos el viernes a las 20:30 y 21:15 para hasta 12 ponentes. No se cambia la hora solicitada.</p>
           <button class="run-button" id="run" disabled>Conectando… <span aria-hidden="true">↗</span></button>
         </form>
         <p class="server-note" id="hosting-note">Preparando conexión con el servidor de la demo.</p>
@@ -51,15 +54,17 @@
       <section class="activity-panel" aria-labelledby="activity-title">
         <div class="section-heading"><div><p class="eyebrow">02 / LAS CONEXIONES</p><h2 id="activity-title">De intención a acción.</h2></div><span id="status" class="status" role="status">Preparando</span></div>
         <div class="topology" aria-label="Participantes de la demo">
-          <div class="node" id="node-request"><span class="node-index">TÚ</span><strong>La petición</strong><small>Formulario local</small></div>
+          <div class="node" id="node-request"><span class="node-index">TÚ</span><strong>La petición</strong><small>Formulario web</small></div>
           <span class="connector" aria-hidden="true">→</span>
           <div class="node" id="node-agent"><span class="node-index">AGENTE</span><strong>Cena</strong><small>Agent Framework</small></div>
           <span class="connector" aria-hidden="true">⇄</span>
           <div class="node" id="node-mcp"><span class="node-index">HERRAMIENTAS</span><strong>Restaurantes</strong><small>MCP · Azure Functions</small></div>
+          <div class="agenda-line node" id="node-agenda" hidden><span class="node-index">AGENTE COMO HERRAMIENTA</span><strong>Cena → Agenda → free_slots</strong><small>Delegación real con as_tool() · mismo proceso</small></div>
+          <div class="agenda-line node" id="node-budget" hidden><span class="node-index">AGENTE REMOTO</span><strong>Cena ⇄ Presupuesto</strong><small>A2A · Agent Card · aclaración · aprobación o rechazo</small></div>
           <div class="model-line" id="node-model"><span aria-hidden="true">↳</span> Microsoft Foundry <b>gpt-4.1-mini</b></div>
         </div>
         <div class="trace-heading"><h3>Registro de esta ejecución</h3><span id="elapsed">00:00</span></div>
-        <p id="empty-state" class="empty-state"><span aria-hidden="true">↗</span> Lanza una petición para seguir las llamadas.<small>Verás la comprobación MCP previa y, si hay candidatos, las llamadas del agente al modelo y a search / book.</small></p>
+        <p id="empty-state" class="empty-state"><span aria-hidden="true">↗</span> Lanza una petición para seguir las llamadas.<small>Verás el preflight MCP y, si hay candidatos, Cena, el modelo y search / book. En demo 02 también Agenda y free_slots. El sangrado muestra las llamadas anidadas.</small></p>
         <ol id="events" class="events" aria-label="Llamadas reales de esta ejecución"></ol>
         <div id="notice" class="notice" role="alert" hidden></div>
         <section id="result" class="result" aria-labelledby="result-title" hidden>

@@ -28,7 +28,7 @@ function setBusy(busy) {
   running = busy;
   for (const control of form.elements) control.disabled = busy;
   $("run").textContent = busy ? "Ejecutando…" : "Organizar cena ↗";
-  for (const id of ["preset-book", "preset-empty", "clear"]) $(id).disabled = busy;
+  for (const id of ["preset-book", "preset-empty", "clear", "chapter-mcp", "chapter-tools", "chapter-a2a"]) $(id).disabled = busy;
   $("download").disabled = busy || !log.length;
 }
 
@@ -48,16 +48,25 @@ function clearView() {
 function updateNodes() {
   const active = [...spans.values()].filter((span) => !span.ended).map((span) => span.name);
   $("node-request").classList.toggle("active", running);
-  $("node-agent").classList.toggle("active", active.some((name) => name.startsWith("invoke_agent")));
-  $("node-mcp").classList.toggle("active", active.some((name) => name.startsWith("execute_tool")));
+  $("node-agent").classList.toggle("active", active.some((name) => name === "invoke_agent Cena"));
+  $("node-mcp").classList.toggle("active", active.some((name) => /^execute_tool (search|book)$/.test(name)));
+  $("node-agenda").classList.toggle("active", active.some((name) => /Agenda|consultar_agenda|free_slots/.test(name)));
+  $("node-budget").classList.toggle("active", active.some((name) => /a2a |consultar_presupuesto/.test(name)));
   $("node-model").classList.toggle("active", active.some((name) => /^(chat|text_completion|generate_content) /.test(name)));
 }
 
 function titleFor(name) {
   if (name === "execute_tool search") return "MCP → search";
   if (name === "execute_tool book") return "MCP → book";
-  if (name.startsWith("invoke_agent")) return "Agente Cena";
-  if (/^(chat|text_completion|generate_content) /.test(name)) return "Cena ⇄ modelo de Foundry";
+  if (name === "execute_tool consultar_agenda") return "Cena → Agenda · as_tool()";
+  if (name === "execute_tool free_slots") return "Agenda → free_slots";
+  if (name === "execute_tool book_after_agenda") return "Cena → reserva autorizada por Agenda";
+  if (name === "execute_tool consultar_presupuesto") return "Cena ⇄ Presupuesto · negociación A2A";
+  if (name === "execute_tool negociar_cena") return "Cena → negociación: Agenda + Presupuesto A2A";
+  if (name === "a2a discover Presupuesto") return "A2A → descubrir Agent Card";
+  if (name === "a2a message/send Presupuesto") return "A2A ⇄ message/send · tarea remota";
+  if (name.startsWith("invoke_agent")) return `Agente ${name.slice("invoke_agent ".length)}`;
+  if (/^(chat|text_completion|generate_content) /.test(name)) return "Agente ⇄ modelo de Foundry";
   return name;
 }
 
@@ -82,7 +91,10 @@ function spanEvent(event) {
     details.append(summary, raw);
     li.append(number, details);
     $("events").append(li);
-    span = { li, title, meta, raw, name: event.name, ended: false };
+    const parent = spans.get(event.parent);
+    const depth = Math.min(4, parent ? parent.depth + 1 : 0);
+    li.dataset.depth = String(depth);
+    span = { li, title, meta, raw, name: event.name, parent: event.parent, traceId: event.trace_id, depth, ended: false };
     spans.set(event.id, span);
   }
   span.title.textContent = titleFor(event.name);
@@ -90,8 +102,11 @@ function spanEvent(event) {
     span.ended = true;
     span.li.classList.remove("running");
     span.li.classList.toggle("failed", event.failed);
-    span.meta.textContent = `${event.failed ? "Error · " : ""}${(event.duration_ms / 1000).toFixed(2)} s`;
-    span.raw.textContent = JSON.stringify({ span: event.name, ...event.details }, null, 2);
+    const task = event.details["gen_ai.tool.call.result"];
+    const state = task?.state ? `${task.state} · ` : "";
+    span.meta.textContent = `${event.failed ? "Error · " : ""}${state}${(event.duration_ms / 1000).toFixed(2)} s`;
+    if (task?.states) span.title.textContent += ` · ${task.states.join(" → ")}`;
+    span.raw.textContent = JSON.stringify({ span: event.name, parent: span.parent, trace_id: span.traceId, ...event.details }, null, 2);
   } else {
     status(titleFor(event.name), "running");
   }
@@ -112,10 +127,22 @@ function showResult(event) {
   $("answer").textContent = data.result;
   $("result-json").textContent = JSON.stringify(data, null, 2);
   $("elapsed").textContent = elapsed(event.duration_ms);
+  if (data.agenda) {
+    $("booking-summary").append(paragraph("muted",
+      `Agenda consultada: ${data.agenda.slots.join(", ") || "sin huecos"} · ${data.agenda.day} · ${data.agenda.people} ponentes.`));
+  }
+  for (const decision of data.budget || []) {
+    $("booking-summary").append(paragraph("muted",
+      `Presupuesto · ${decision.restaurant_id}: ${decision.approved ? "APROBADO" : "RECHAZADO"} · ${decision.per_head} €/persona · límite ${decision.max_per_head} €${decision.includes_drinks ? " con bebida" : " sin bebida"}.`));
+  }
   const booking = data.booking;
   if (!booking) {
     $("result-title").textContent = "Esta vez no hay mesa.";
-    $("booking-summary").append(paragraph("muted", "La comprobación MCP no encontró candidatos. No se ha llamado al modelo ni realizado una reserva."));
+    $("booking-summary").append(paragraph("muted", data.budget?.length
+      ? "Presupuesto ha rechazado todas las propuestas. No se ha realizado ninguna reserva."
+      : data.agenda
+      ? "Agenda no permite la hora solicitada para ese grupo. No se ha realizado ninguna reserva."
+      : "La comprobación MCP no encontró candidatos. No se ha llamado al modelo ni realizado una reserva."));
     status("Sin disponibilidad", "done");
     return;
   }
@@ -158,8 +185,9 @@ form.addEventListener("submit", async (e) => {
   if (!near) { $("near").focus(); notice("Indica una zona, no solo espacios."); return; }
   clearView();
   $("empty-state").hidden = true;
-  const request = { near, people: Number($("people").value), max_per_head: Number($("price").value),
+  const request = { mode: $("mode").value, near, people: Number($("people").value), max_per_head: Number($("price").value),
     when: $("when").value + ":00" + $("offset").value };
+  if (request.mode === "a2a") request.includes_drinks = $("includes-drinks").checked;
   log.push({ type: "request", data: request, at: new Date().toISOString() });
   setBusy(true);
   started = performance.now();
@@ -208,7 +236,8 @@ form.addEventListener("submit", async (e) => {
 function preset(empty) {
   $("near").value = empty ? "zona-sin-restaurantes" : "zona-demo";
   $("people").value = "12";
-  $("price").value = "50";
+  $("price").value = $("mode").value === "mcp" ? "50" : "45";
+  $("includes-drinks").checked = true;
   $("when").value = "2026-10-23T20:30";
   $("offset").value = "+02:00";
   for (const [id, selected] of [["preset-book", !empty], ["preset-empty", empty]]) {
@@ -216,6 +245,28 @@ function preset(empty) {
     $(id).setAttribute("aria-pressed", String(selected));
   }
 }
+function selectMode(mode) {
+  if (running) return;
+  $("mode").value = mode;
+  $("demo-label").textContent = `EL LABORATORIO / DEMO ${{mcp: "01", tools: "02", a2a: "03"}[mode]}`;
+  $("node-agenda").hidden = mode === "mcp";
+  $("node-budget").hidden = mode !== "a2a";
+  $("drinks-field").hidden = mode !== "a2a";
+  $("price-label").textContent = mode === "a2a" ? "Límite / persona (€)" : "Menú / persona (€)";
+  $("price-help").textContent = mode === "a2a"
+    ? "La casilla responde a la aclaración real de Presupuesto (input-required). Con 45 € y bebida: La Plaza (48 €) se rechaza y El Patio (43 €) se aprueba. No se modifica la hora."
+    : "El límite solo incluye el menú, bebida aparte. Agenda tiene huecos el viernes a las 20:30 y 21:15 para hasta 12 ponentes. No se cambia la hora solicitada.";
+  for (const value of ["mcp", "tools", "a2a"]) {
+    $(`chapter-${value}`).classList.toggle("current", mode === value);
+    $(`chapter-${value}`).setAttribute("aria-pressed", String(mode === value));
+  }
+  clearView();
+  preset(false);
+}
+$("mode").addEventListener("change", () => selectMode($("mode").value));
+$("chapter-mcp").addEventListener("click", () => selectMode("mcp"));
+$("chapter-tools").addEventListener("click", () => selectMode("tools"));
+$("chapter-a2a").addEventListener("click", () => selectMode("a2a"));
 $("preset-book").addEventListener("click", () => preset(false));
 $("preset-empty").addEventListener("click", () => preset(true));
 $("clear").addEventListener("click", clearView);

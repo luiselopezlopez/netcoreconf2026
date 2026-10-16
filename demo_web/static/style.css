@@ -25,7 +25,7 @@
   .intro-copy { color: var(--muted); font-size: .95rem; max-width: 360px; padding-bottom: 6px; }
   .intro-copy strong { display: block; margin-top: 14px; color: var(--ink); font-weight: 500; }
   .chapters { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); margin-bottom: 36px; }
-  .chapter { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 17px 20px; font-size: .85rem; }
+  .chapter { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 17px 20px; font-size: .85rem; background: none; border: 0; text-align: left; color: inherit; }
   .chapter:first-child { padding-left: 0; }
   .chapter + .chapter { border-left: 1px solid var(--line); }
   .chapter b { font-weight: 500; color: var(--muted); }
@@ -59,6 +59,8 @@
   label { display: block; font-size: .75rem; font-weight: 600; margin-bottom: 7px; }
   input, select { width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid #b5afa3; border-radius: 3px; background: #fcfaf6; color: var(--ink); margin-bottom: 17px; min-width: 0; }
   input:hover, select:hover { border-color: var(--muted); }
+  .check-label { display: flex; align-items: center; gap: 10px; }
+  .check-label input { width: 18px; min-height: 18px; margin: 0; }
   .field-row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px; }
   .field-help, .server-note { color: var(--muted); font-size: .72rem; line-height: 1.65; }
   .run-button { display: flex; align-items: center; justify-content: space-between; border: 0; width: 100%; padding: 16px 18px; margin-top: 22px; background: var(--accent); color: white; font-weight: 600; border-radius: 3px; transition: background .15s; }
@@ -79,6 +81,11 @@
   .model-line { grid-column: 3 / 6; font-size: .7rem; color: var(--muted); padding-top: 10px; }
   .model-line b { font-weight: 600; color: var(--violet); margin-left: 5px; }
   .model-line.active { color: var(--accent); }
+  .agenda-line { grid-column: 3 / 6; margin-top: 12px; min-height: auto; }
+  .event[data-depth="1"] { margin-left: 16px; }
+  .event[data-depth="2"] { margin-left: 32px; }
+  .event[data-depth="3"] { margin-left: 48px; }
+  .event[data-depth="4"] { margin-left: 64px; }
   .trace-heading { display: flex; justify-content: space-between; align-items: center; padding-block: 15px; border-block: 1px solid var(--line); }
   #elapsed { font-variant-numeric: tabular-nums; font-family: Consolas, monospace; font-size: .8rem; color: var(--muted); }
   .empty-state { padding: 38px 15px 42px; text-align: center; color: var(--muted); font-size: .9rem; }

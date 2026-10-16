@@ -17,6 +17,11 @@ var tags = {
   project: 'poliamor-netcoreconf'
 }
 var foundryRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+var monitoringRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')
+
+resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
+  name: 'appi-poliamor-${resourceToken}'
+}
 
 resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: foundryAccountName
@@ -27,6 +32,9 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' exis
 }
 resource restaurants 'Microsoft.Web/sites@2024-04-01' existing = {
   name: restaurantsAppName
+}
+resource budget 'Microsoft.Web/sites@2024-04-01' existing = {
+  name: 'func-presupuesto-${resourceToken}'
 }
 resource plan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: 'plan-web-${resourceToken}'
@@ -64,10 +72,13 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
       appSettings: [
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
         { name: 'AZURE_TOKEN_CREDENTIALS', value: 'ManagedIdentityCredential' }
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: insights.properties.ConnectionString }
         { name: 'AZURE_AI_PROJECT_ENDPOINT', value: 'https://${foundry.name}.services.ai.azure.com/api/projects/${project.name}' }
         { name: 'AZURE_AI_MODEL_DEPLOYMENT_NAME', value: modelDeploymentName }
         { name: 'RESTAURANTES_MCP_URL', value: 'https://${restaurants.properties.defaultHostName}/runtime/webhooks/mcp' }
         { name: 'RESTAURANTES_MCP_KEY', value: listKeys('${restaurants.id}/host/default', '2024-04-01').systemKeys.mcp_extension }
+        { name: 'PRESUPUESTO_A2A_URL', value: 'https://${budget.properties.defaultHostName}/a2a' }
+        { name: 'PRESUPUESTO_A2A_KEY', value: listKeys('${budget.id}/host/default', '2024-04-01').functionKeys.default }
         { name: 'WEB_AUTH_CLIENT_SECRET', value: entraClientSecret }
         { name: 'WEB_ALLOWED_USER_ID', value: allowedUserId }
       ]
@@ -119,6 +130,16 @@ resource modelAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: project
   properties: {
     roleDefinitionId: foundryRole
+    principalId: web.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource telemetryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(insights.id, web.name, monitoringRole)
+  scope: insights
+  properties: {
+    roleDefinitionId: monitoringRole
     principalId: web.identity.principalId
     principalType: 'ServicePrincipal'
   }
