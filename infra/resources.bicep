@@ -186,10 +186,6 @@ resource apps 'Microsoft.Web/sites@2024-04-01' = [for (service, i) in services: 
       ftpsState: 'Disabled'
       appSettings: [
         {
-          name: 'FUNCTIONS_WORKER_PROCESS_COUNT'
-          value: '1'
-        }
-        {
           name: 'AzureWebJobsStorage__accountName'
           value: storage.name
         }

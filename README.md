@@ -233,7 +233,8 @@ El hook [configure-mcp.ps1](scripts/configure-mcp.ps1) configura tambien A2A
 en Orquestador y la web; las claves no son outputs ni se envian al navegador.
 
 Las ultimas 128 tareas viven **solo en memoria**. Presupuesto se limita a
-una instancia y un worker para que la aclaracion alcance el mismo proceso.
+una instancia y concurrencia HTTP 1. Flex Consumption administra sus workers
+y no admite `FUNCTIONS_WORKER_PROCESS_COUNT`; no se configura ese ajuste.
 Un reinicio, cold start o eviction pierde la tarea: el SDK devuelve error
 en vez de aprobar por defecto. Es una demo sin persistencia, no un servicio
 de aprobaciones distribuido ni un sistema de cargos.
