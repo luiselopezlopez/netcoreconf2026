@@ -1,0 +1,14 @@
+.azure/
+.venv/
+.venv-*/
+.env
+.env.*
+!.env.example
+**/local.settings.json
+**/__pycache__/
+**/.python_packages/
+*.py[cod]
+*.zip
+infra/*.json.tmp
+infra/main.json
+.vscode/*.local.json

@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/azure-dev/v1.0/azure.yaml.json
+name: poliamor-netcoreconf
+
+infra:
+  provider: bicep
+  path: infra
+
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/check-context.ps1
+    interactive: false
+
+services:
+  restaurantes:
+    project: ./src/restaurantes
+    language: python
+    host: function
+  orquestador:
+    project: ./src/orquestador
+    language: python
+    host: function
+  presupuesto:
+    project: ./src/presupuesto
+    language: python
+    host: function
