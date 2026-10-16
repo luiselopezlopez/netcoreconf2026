@@ -3,17 +3,17 @@
 Demos para NetCoreConf: MCP, agents as tools y Agent2Agent, con Microsoft
 Agent Framework y Azure Functions.
 
-## Estado: fase 4 implementada; publicacion A2A pendiente
+## Estado: fase 4 desplegada y verificada en Azure
 
-Las fases 1 y 2 estan desplegadas y verificadas el **2026-10-16** en `MCT Luise 2`,
+Las fases 1 a 4 estan desplegadas y verificadas el **2026-10-16** en `MCT Luise 2`,
 grupo `rg-poliamor-demo`, region `spaincentral`.
 La demo MCP ya busca y reserva restaurantes ficticios mediante el agente
 Cena. La web local y la web en Azure permiten ver trazas del framework en directo.
-Agenda y negociacion A2A estan implementadas en el codigo. La fase 4 se ha
-probado con los tres agentes y el modelo real de Foundry, MCP de Azure y
-Presupuesto local. Los cambios nuevos todavia requieren publicacion en Azure;
-no confundir esta validacion con una prueba del hosting desplegado.
-Las fases siguientes se implementan despues de revisar la anterior:
+Agenda y negociacion A2A se han probado entre las Functions desplegadas,
+con el modelo real de Foundry y MCP de Azure. La web se ha actualizado y
+conserva la autenticacion Entra; su ensayo completo en Azure requiere
+iniciar sesion interactivamente y sigue pendiente.
+Fases del proyecto:
 
 1. Esqueleto, infraestructura y tres Functions funcionando.
 2. Restaurantes por MCP y orquestador en modo `mcp`.
@@ -235,11 +235,18 @@ El hook [configure-mcp.ps1](scripts/configure-mcp.ps1) configura tambien A2A
 en Orquestador y la web; las claves no son outputs ni se envian al navegador.
 
 Las ultimas 128 tareas viven **solo en memoria**. Presupuesto se limita a
-una instancia y concurrencia HTTP 1. Flex Consumption administra sus workers
+una instancia y concurrencia HTTP 4. Con concurrencia 1 se observaron
+503 entre llamadas consecutivas; con 4 pasaron los ensayos A2A completos.
+Flex Consumption administra sus workers
 y no admite `FUNCTIONS_WORKER_PROCESS_COUNT`; no se configura ese ajuste.
 Un reinicio, cold start o eviction pierde la tarea: el SDK devuelve error
 en vez de aprobar por defecto. Es una demo sin persistencia, no un servicio
 de aprobaciones distribuido ni un sistema de cargos.
+Sin Always Ready, pueden aparecer cold starts y respuestas 503 transitorias;
+no se garantiza disponibilidad continua. Si un ensayo falla, espera a que
+el host responda y empieza una tarea nueva; no se reintentan reservas
+automaticamente. Los ensayos muy seguidos tambien pueden alcanzar el limite
+de peticiones del deployment de modelo: espera su ventana antes de repetir.
 
 **Publicar estos cambios en el entorno existente**, sin otro proyecto Foundry:
 
@@ -568,8 +575,23 @@ La tarea referencia la copia aislada de Core Tools descrita anteriormente.
   No se declara validado como hosting estable: este equipo no tenia Storage
   local configurado y Core Tools reciclo el host. El ensayo HTTP uso el
   adaptador local anterior, no una Function desplegada en Azure.
-- Publicacion de fase 4, autenticacion A2A entre Functions Azure y prueba
-  completa desde la web Azure: **pendientes**.
+- Publicacion de los cuatro servicios y ensayo entre Functions Azure:
+  correctos. El guion de 45 EUR con bebida rechazo La Plaza (48 EUR) y
+  aprobo El Patio (43 EUR), con reserva ficticia para 12. Repetido tras
+  ajustar concurrencia: **48,16 s** incluyendo lectura de entorno y clave.
+- Cuatro `message/send`, con continuidad de `taskId` y `contextId` y estados
+  `submitted -> working -> input-required -> working -> completed`.
+- Ramas Azure: 40 EUR con bebida devuelve HTTP 409 y ninguna reserva;
+  45 EUR sin bebida aprueba La Plaza; modos MCP y Agenda reservan La Plaza.
+- Health de las tres Functions: HTTP 200 con clave y 401 sin clave.
+  Agent Card protegida y URL Azure correcta; web health 200 y rutas
+  privadas 302 hacia Entra. Roles Foundry User de ambos agentes y web
+  comprobados sobre el proyecto `cena`, sin ampliar scopes.
+- Se corrigieron dos fallos de publicacion: ajuste worker incompatible con
+  Flex y dependencia `aiohttp` ausente en Presupuesto. La concurrencia HTTP
+  de Presupuesto paso de 1 a 4, manteniendo una instancia y sin Always Ready.
+- La prueba completa desde la web Azure sigue **pendiente de login
+  interactivo**. No se deshabilito la autenticacion para ensayarla.
 
 ## Seguridad y siguientes fases
 

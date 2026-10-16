@@ -176,7 +176,7 @@ resource apps 'Microsoft.Web/sites@2024-04-01' = [for (service, i) in services: 
         maximumInstanceCount: service == 'presupuesto' ? 1 : 10
         triggers: {
           http: {
-            perInstanceConcurrency: 1
+            perInstanceConcurrency: service == 'presupuesto' ? 4 : 1
           }
         }
       }
