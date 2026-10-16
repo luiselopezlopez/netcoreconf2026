@@ -94,6 +94,8 @@ JSON-RPC y `AgentExecutor`. No se usa la integracion A2A 1.x del entorno global.
 Se fijan tambien `protobuf==5.29.6` y `googleapis-common-protos==1.70.0`
 para evitar el conflicto de gencode Protobuf 6 con el runtime 5 del worker
 Functions comprobado con Core Tools 4.16.0.
+`aiohttp` se declara explicitamente para el transporte asincrono de Azure
+Identity con identidad administrada, tambien en Presupuesto.
 Instalar tambien los requirements de Presupuesto al ejecutar sus pruebas:
 
 ```powershell
