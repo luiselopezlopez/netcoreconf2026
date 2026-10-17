@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -87,10 +88,15 @@ class Demo:
         events.put({"type": "started"})
         try:
             with trace.get_tracer("cena").start_as_current_span("cena.request") as span:
-                result = asyncio.run(self.runner(
+                arguments = dict(
                     near=dinner.near, people=dinner.people,
                     max_per_head=dinner.max_per_head, when=dinner.when, mode=dinner.mode,
-                    **({"includes_drinks": dinner.includes_drinks} if dinner.mode == "a2a" else {})))
+                    **({"includes_drinks": dinner.includes_drinks} if dinner.mode == "a2a" else {}))
+                parameters = inspect.signature(self.runner).parameters.values()
+                if any(parameter.name == "on_activity" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+                       for parameter in parameters):
+                    arguments["on_activity"] = events.put
+                result = asyncio.run(self.runner(**arguments))
                 result["trace_id"] = format(span.get_span_context().trace_id, "032x")
             events.put({"type": "result", "data": result,
                         "duration_ms": round((monotonic() - started) * 1000)})

@@ -2,6 +2,7 @@ import json
 import os
 from uuid import uuid4
 from decimal import Decimal
+from typing import Callable
 
 import httpx
 from a2a.client import A2AClient
@@ -27,19 +28,39 @@ class BudgetDecision(BaseModel):
     explanation: str
 
 
-async def consult_budget(proposal: dict, includes_drinks: bool, exchanges: list[dict]) -> dict:
+async def consult_budget(proposal: dict, includes_drinks: bool, exchanges: list[dict],
+                         on_activity: Callable[[dict], None] | None = None) -> dict:
+    def publish(activity: dict) -> None:
+        if on_activity is not None:
+            on_activity(activity)
+
     url = os.environ["PRESUPUESTO_A2A_URL"].rstrip("/")
     async with httpx.AsyncClient(headers={"x-functions-key": os.environ["PRESUPUESTO_A2A_KEY"]},
                                  timeout=65) as http:
-        with trace.get_tracer("cena.a2a").start_as_current_span("a2a discover Presupuesto"):
+        with trace.get_tracer("cena.a2a").start_as_current_span(
+                "a2a discover Presupuesto") as discovery_span:
             response = await http.get(url.removesuffix("/a2a") + "/.well-known/agent-card.json")
             response.raise_for_status()
             card = AgentCard.model_validate(response.json())
             if card.url != url or not {"aprobar_gasto", "consultar_saldo"} <= {s.id for s in card.skills}:
                 raise RuntimeError("Agent Card de Presupuesto no coincide con el endpoint y skills esperados.")
+            card_details = card.model_dump(
+                mode="json", by_alias=True, exclude_none=True,
+                include={"name", "description", "version", "protocol_version",
+                         "capabilities", "default_input_modes", "default_output_modes", "skills"},
+            )
+            discovery_span.set_attribute("gen_ai.tool.name", "A2A Agent Card")
+            discovery_span.set_attribute("gen_ai.tool.call.result", json.dumps(card_details))
+            publish({
+                "type": "discovery", "system": "A2A",
+                "title": "Descubrimiento A2A · Agent Card",
+                "details": card_details,
+            })
         client = A2AClient(http, agent_card=card)
 
         async def send(payload, previous=None):
+            publish({"type": "conversation", "agent": "Presupuesto", "role": "user",
+                     "content": payload})
             with trace.get_tracer("cena.a2a").start_as_current_span("a2a message/send Presupuesto") as span:
                 message = Message(role=Role.user, message_id=str(uuid4()),
                                   task_id=previous.id if previous else None,
@@ -54,6 +75,17 @@ async def consult_budget(proposal: dict, includes_drinks: bool, exchanges: list[
                             "state": task.status.state.value, "states": (task.metadata or {}).get("states", []),
                             "request": payload, "response": task.model_dump(mode="json", by_alias=True, exclude_none=True)}
                 exchanges.append(exchange)
+                status_message = task.status.message
+                answer = "\n".join(
+                    part.root.text for part in status_message.parts if isinstance(part.root, TextPart)
+                ) if status_message else ""
+                artifacts = [
+                    part.root.model_dump(mode="json", by_alias=True, exclude_none=True)
+                    for artifact in task.artifacts or [] for part in artifact.parts
+                ]
+                publish({"type": "conversation", "agent": "Presupuesto", "role": "assistant",
+                         "content": {"state": task.status.state.value, "message": answer,
+                                     "artifacts": artifacts}})
                 span.set_attribute("gen_ai.tool.call.arguments", json.dumps(payload))
                 span.set_attribute("gen_ai.tool.call.result", json.dumps(exchange))
                 return task

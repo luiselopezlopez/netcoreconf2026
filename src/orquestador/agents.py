@@ -3,6 +3,7 @@ import json
 import os
 from contextlib import AsyncExitStack
 from datetime import datetime
+from typing import Callable
 
 import httpx
 from agent_framework import Agent, ChatOptions, MCPStreamableHTTPTool, tool
@@ -10,19 +11,26 @@ from agent_framework_foundry import FoundryChatClient
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import DefaultAzureCredential
 from mcp.types import CallToolResult
+from opentelemetry import trace
 
 from data import FREE_SLOTS
 from budget_peer import consult_budget
 
 
 async def organize(near: str, people: int, max_per_head: float, when: str, mode: str = "mcp",
-                   includes_drinks: bool = True) -> dict:
+                   includes_drinks: bool = True,
+                   on_activity: Callable[[dict], None] | None = None) -> dict:
     if mode not in ("mcp", "tools", "a2a"):
         raise ValueError("Solo se admite mode=mcp, tools o a2a.")
     results: list[dict] = []
     agenda_results: list[dict] = []
     budget_results: list[dict] = []
     exchanges: list[dict] = []
+
+    def publish(activity: dict) -> None:
+        if on_activity is not None:
+            on_activity(activity)
+
     requested_time = datetime.fromisoformat(when).time().replace(tzinfo=None).isoformat()
     weekday = ("monday", "tuesday", "wednesday", "thursday", "friday",
                "saturday", "sunday")[datetime.fromisoformat(when).weekday()]
@@ -38,11 +46,30 @@ async def organize(near: str, people: int, max_per_head: float, when: str, mode:
         credential = await stack.enter_async_context(DefaultAzureCredential())
         http = await stack.enter_async_context(httpx.AsyncClient(
             headers={"x-functions-key": os.environ["RESTAURANTES_MCP_KEY"]}, timeout=20))
-        mcp = await stack.enter_async_context(MCPStreamableHTTPTool(
-            name="Restaurantes", url=os.environ["RESTAURANTES_MCP_URL"],
-            http_client=http, load_prompts=False, allowed_tools=["search", "book"],
-            request_timeout=20, parse_tool_results=record,
-        ))
+        with trace.get_tracer("cena.mcp").start_as_current_span(
+                "mcp discover Restaurantes") as discovery_span:
+            mcp = await stack.enter_async_context(MCPStreamableHTTPTool(
+                name="Restaurantes", url=os.environ["RESTAURANTES_MCP_URL"],
+                http_client=http, load_prompts=False, allowed_tools=["search", "book"],
+                request_timeout=20, parse_tool_results=record,
+            ))
+            discovered_tools = [
+                {"name": function.name, "description": function.description,
+                 "parameters": function.parameters()}
+                for function in mcp.functions
+            ]
+            discovery_span.set_attribute("gen_ai.tool.name", "MCP tools/list")
+            discovery_span.set_attribute("gen_ai.tool.call.result", json.dumps({
+                "server": "Restaurantes", "tools": discovered_tools,
+            }))
+        publish({
+            "type": "discovery", "system": "MCP",
+            "title": "Negociación MCP · initialize → tools/list",
+            "details": {
+                "server": "Restaurantes",
+                "tools": discovered_tools,
+            },
+        })
 
         def create_chat_client():
             return FoundryChatClient(
@@ -100,10 +127,27 @@ async def organize(near: str, people: int, max_per_head: float, when: str, mode:
                 await book.invoke(arguments={"restaurant_id": restaurant_id, "when": when, "people": people})
                 return json.dumps(results[-1])
 
-            agenda_tool = agenda.as_tool(name="consultar_agenda", arg_name="request",
+            agenda_agent_tool = agenda.as_tool(name="consultar_agenda", arg_name="request",
                      arg_description="Una cadena de texto con la fecha ISO y el numero de ponentes.",
                      description="Delega una peticion de disponibilidad en el agente Agenda.")
-            tools = [search, agenda_tool, book_after_agenda]
+
+            async def ask_agenda(request: str) -> str:
+                publish({"type": "conversation", "agent": "Agenda", "role": "user",
+                         "content": request})
+                response = await agenda_agent_tool.invoke(arguments={"request": request})
+                answer = "\n".join(part.text for part in response if hasattr(part, "text"))
+                if not answer:
+                    raise RuntimeError("Agenda no devolvió una respuesta de texto.")
+                publish({"type": "conversation", "agent": "Agenda", "role": "assistant",
+                         "content": answer})
+                return answer
+
+            @tool
+            async def consultar_agenda(request: str) -> str:
+                """Delega una peticion de disponibilidad en el agente Agenda."""
+                return await ask_agenda(request)
+
+            tools = [search, consultar_agenda, book_after_agenda]
             instructions = ("Antes de reservar, llama consultar_agenda pasando request como una CADENA "
                             "con la fecha ISO y el numero exacto de ponentes. "
                             "Agenda es otro agente con su herramienta free_slots. "
@@ -124,7 +168,11 @@ async def organize(near: str, people: int, max_per_head: float, when: str, mode:
                     proposal = {"skill": "aprobar_gasto", "restaurant_id": restaurant_id,
                                 "people": people, "menu_per_head": candidate["menu"],
                                 "drink_per_head": candidate["drink"], "max_per_head": max_per_head}
-                    decision = await consult_budget(proposal, includes_drinks, exchanges)
+                    if on_activity is None:
+                        decision = await consult_budget(proposal, includes_drinks, exchanges)
+                    else:
+                        decision = await consult_budget(
+                            proposal, includes_drinks, exchanges, on_activity=on_activity)
                     budget_results.append(decision)
                     return json.dumps(decision)
 
@@ -133,7 +181,8 @@ async def organize(near: str, people: int, max_per_head: float, when: str, mode:
                     """Delega en Agenda y Presupuesto A2A en orden; reserva solo una propuesta aprobada."""
                     if agenda_results:
                         raise ValueError("La negociacion ya se inicio; no se puede repetir.")
-                    await agenda_tool.invoke(arguments={"request": f"Fecha {when[:10]}, {people} ponentes."})
+                    await consultar_agenda.invoke(
+                        arguments={"request": f"Fecha {when[:10]}, {people} ponentes."})
                     if not agenda_results:
                         raise RuntimeError("Agenda no produjo disponibilidad verificable.")
                     if requested_time not in [s + ":00" for s in agenda_results[-1]["slots"]]:
@@ -167,13 +216,16 @@ async def organize(near: str, people: int, max_per_head: float, when: str, mode:
         options: ChatOptions = {"max_tokens": 600, "allow_multiple_tool_calls": False}
         if mode == "a2a":
             options["tool_choice"] = {"mode": "required", "required_function_name": "negociar_cena"}
+        prompt = json.dumps({"near": near, "people": people, "max_per_head": max_per_head,
+                             "when": when, "weekday": weekday,
+                             **({"restaurants": available} if mode == "a2a" else {})})
+        publish({"type": "conversation", "agent": "Cena", "role": "user", "content": prompt})
         async with asyncio.timeout(180 if mode == "a2a" else 90):
             response = await agent.run(
-                json.dumps({"near": near, "people": people, "max_per_head": max_per_head,
-                            "when": when, "weekday": weekday,
-                            **({"restaurants": available} if mode == "a2a" else {})}),
-                options=options,
+                prompt, options=options,
             )
+        publish({"type": "conversation", "agent": "Cena", "role": "assistant",
+                 "content": response.text})
         bookings = [r for r in results if "booking_id" in r]
         if mode in ("tools", "a2a") and not agenda_results:
             raise RuntimeError("Cena no delego una consulta verificable en Agenda.")

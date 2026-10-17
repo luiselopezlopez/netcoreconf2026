@@ -63,8 +63,16 @@
           <div class="agenda-line node" id="node-budget" hidden><span class="node-index">AGENTE REMOTO</span><strong>Cena ⇄ Presupuesto</strong><small>A2A · Agent Card · aclaración · aprobación o rechazo</small></div>
           <div class="model-line" id="node-model"><span aria-hidden="true">↳</span> Microsoft Foundry <b>gpt-4.1-mini</b></div>
         </div>
+        <section id="capabilities" class="activity-section" aria-labelledby="capabilities-title" hidden>
+          <div class="trace-heading"><h3 id="capabilities-title">Descubrimiento de capacidades</h3><span>MCP · A2A</span></div>
+          <ol id="capability-list" class="capabilities" aria-label="Capacidades descubiertas"></ol>
+        </section>
+        <section id="conversation" class="activity-section" aria-labelledby="conversation-title" hidden>
+          <div class="trace-heading"><h3 id="conversation-title">Conversación con los agentes</h3><span>Petición / respuesta</span></div>
+          <ol id="conversation-list" class="conversation" aria-label="Mensajes enviados y respuestas de los agentes"></ol>
+        </section>
         <div class="trace-heading"><h3>Registro de esta ejecución</h3><span id="elapsed">00:00</span></div>
-        <p id="empty-state" class="empty-state"><span aria-hidden="true">↗</span> Lanza una petición para seguir las llamadas.<small>Verás el preflight MCP y, si hay candidatos, Cena, el modelo y search / book. En demo 02 también Agenda y free_slots. El sangrado muestra las llamadas anidadas.</small></p>
+        <p id="empty-state" class="empty-state"><span aria-hidden="true">↗</span> Lanza una petición para seguir las llamadas.<small>Verás el descubrimiento de herramientas/capacidades, los mensajes de los agentes y, por separado, las trazas técnicas JSON.</small></p>
         <ol id="events" class="events" aria-label="Llamadas reales de esta ejecución"></ol>
         <div id="notice" class="notice" role="alert" hidden></div>
         <section id="result" class="result" aria-labelledby="result-title" hidden>

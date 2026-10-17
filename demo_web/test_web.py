@@ -13,6 +13,14 @@ BODY = {"near": "zona-demo", "people": 12, "max_per_head": 50,
 
 
 async def fake_runner(**kwargs):
+    on_activity = kwargs.pop("on_activity", None)
+    if on_activity is not None:
+        on_activity({"type": "discovery", "system": "MCP", "title": "MCP test",
+                     "details": {"tools": [{"name": "search"}]}})
+        on_activity({"type": "conversation", "agent": "Cena", "role": "user",
+                     "content": '{"near":"zona-demo"}'})
+        on_activity({"type": "conversation", "agent": "Cena", "role": "assistant",
+                     "content": "Respuesta de prueba."})
     with trace.get_tracer("demo-test").start_as_current_span(
         "execute_tool search", attributes={"gen_ai.tool.call.arguments": json.dumps(kwargs),
                                            "http.request.header.x-functions-key": "never-publish"}):
@@ -83,10 +91,13 @@ class WebTest(unittest.TestCase):
         self.assertIn("application/x-ndjson", headers["Content-Type"])
         events = [json.loads(line) for line in body.splitlines()]
         self.assertEqual([event["type"] for event in events],
-                         ["started", "span_start", "span_start", "span_end", "span_end", "result"])
-        self.assertEqual(events[2]["id"], events[3]["id"])
-        self.assertEqual(events[2]["parent"], events[1]["id"])
-        self.assertEqual(events[3]["details"]["gen_ai.tool.call.arguments"]["people"], 12)
+                         ["started", "span_start", "discovery", "conversation", "conversation",
+                          "span_start", "span_end", "span_end", "result"])
+        self.assertEqual(events[3]["content"], '{"near":"zona-demo"}')
+        self.assertEqual(events[4]["content"], "Respuesta de prueba.")
+        self.assertEqual(events[5]["id"], events[6]["id"])
+        self.assertEqual(events[5]["parent"], events[1]["id"])
+        self.assertEqual(events[6]["details"]["gen_ai.tool.call.arguments"]["people"], 12)
         self.assertEqual(events[-1]["data"]["trace_id"], events[1]["trace_id"])
         self.assertNotIn(b"never-publish", body)
         self.assertIsNone(events[-1]["data"]["booking"])

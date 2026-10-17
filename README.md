@@ -144,6 +144,8 @@ seleccionado en Foundry Toolkit. Las variables del proceso se restauran al salir
    23/10/2026 a las 20:30 UTC+02, zona-demo, limite de menu 50 EUR.
 2. Seguir la comprobacion inicial `search` de MCP y, despues, el agente Cena,
    sus llamadas al modelo de Foundry y sus herramientas `search` / `book`.
+   La interfaz muestra por separado el descubrimiento MCP (`initialize` y
+   `tools/list`), los mensajes de los agentes como conversacion y las trazas JSON.
    Abrir una llamada para ver sus argumentos, resultado y duracion reales.
 3. Mostrar la reserva ficticia y el menu + bebida por persona. En MCP el
    limite solo se aplica al menu; no hay negociacion presupuestaria A2A.
@@ -158,7 +160,11 @@ Orquestador **en el proceso web**, con el modelo Foundry y el MCP de Restaurante
 remotos. No llama a `/api/cena` de Azure ni usa la identidad administrada
 de esa Function. Las trazas son spans OpenTelemetry reales del framework,
 incluido el preflight invocado mediante su `FunctionTool`; no se muestran
-razonamientos internos, prompts del modelo ni headers de autenticacion.
+razonamientos internos ni instrucciones de sistema. La conversacion muestra
+los mensajes de entrada y respuestas visibles de Cena, Agenda y Presupuesto,
+separados del registro JSON. El panel de capacidades presenta las tools
+devueltas por `tools/list` en MCP y las skills de la Agent Card A2A validada.
+No se muestran headers de autenticacion.
 El frontend usa solo archivos locales, sin CDN ni fuentes externas.
 
 En modo local escucha exclusivamente en loopback, exige Host/origen local y un token de

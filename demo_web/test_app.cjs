@@ -11,9 +11,10 @@ async function browser(respond) {
   function node(id) {
     if (!nodes.has(id)) nodes.set(id, {
       value: "", textContent: "", hidden: false, disabled: false, dataset: {}, elements: [],
-      listeners: {}, classList: { remove() {}, toggle() {} },
+      children: [], listeners: {}, classList: { remove() {}, toggle() {} },
       addEventListener(event, handler) { this.listeners[event] = handler; },
-      replaceChildren() {}, setAttribute() {}, reportValidity() { return true; },
+      append(...items) { this.children.push(...items); },
+      replaceChildren(...items) { this.children = items; }, setAttribute() {}, reportValidity() { return true; },
     });
     return nodes.get(id);
   }
@@ -21,7 +22,13 @@ async function browser(respond) {
     "includes-drinks"].map(node);
   const calls = [];
   const context = vm.createContext({
-    document: { getElementById: node, querySelectorAll: () => [] },
+    document: {
+      getElementById: node, querySelectorAll: () => [],
+      createElement: (tagName) => ({
+        tagName, children: [], dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
+        append(...items) { this.children.push(...items); },
+      }),
+    },
     fetch: async (url, options) => {
       calls.push({ url, options });
       return respond(url, options, calls);
@@ -100,4 +107,26 @@ test("expired session at refresh never submits a booking", async () => {
   await submit(ui);
   assert.match(ui.node("notice").textContent, /sesión web ha caducado/);
   assert.equal(ui.calls.filter((call) => call.url === "/api/run").length, 0);
+});
+
+test("renders agent conversation and discovered MCP/A2A capabilities separately", async () => {
+  const events = [
+    { type: "discovery", system: "MCP", title: "tools/list",
+      details: { tools: [{ name: "search", description: "Buscar", parameters: { type: "object" } }] } },
+    { type: "discovery", system: "A2A", title: "Agent Card",
+      details: { name: "Presupuesto", skills: [{ id: "aprobar_gasto", name: "Aprobar gasto" }] } },
+    { type: "conversation", agent: "Cena", role: "user", content: '{"near":"zona-demo"}' },
+    { type: "conversation", agent: "Cena", role: "assistant", content: "Hecho." },
+    { type: "result", duration_ms: 100, data: { result: "Hecho.", booking: null } },
+  ];
+  const ui = await browser((url) => url === "/api/config" ? config() :
+    new Response(events.map((event) => `${JSON.stringify(event)}\n`).join(""), {
+      headers: { "Content-Type": "application/x-ndjson" },
+    }));
+  await submit(ui);
+  assert.equal(ui.node("capabilities").hidden, false);
+  assert.equal(ui.node("capability-list").children.length, 3);
+  assert.equal(ui.node("conversation").hidden, false);
+  assert.equal(ui.node("conversation-list").children.length, 2);
+  assert.equal(ui.node("events").children.length, 0);
 });

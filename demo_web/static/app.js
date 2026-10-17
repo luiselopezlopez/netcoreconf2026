@@ -75,6 +75,10 @@ function clearView() {
   spans.clear();
   log = [];
   $("events").replaceChildren();
+  $("conversation-list").replaceChildren();
+  $("capability-list").replaceChildren();
+  $("conversation").hidden = true;
+  $("capabilities").hidden = true;
   $("empty-state").hidden = false;
   $("result").hidden = true;
   $("notice").hidden = true;
@@ -95,6 +99,7 @@ function updateNodes() {
 }
 
 function titleFor(name) {
+  if (name === "mcp discover Restaurantes") return "MCP → initialize / tools/list";
   if (name === "execute_tool search") return "MCP → search";
   if (name === "execute_tool book") return "MCP → book";
   if (name === "execute_tool consultar_agenda") return "Cena → Agenda · as_tool()";
@@ -102,7 +107,7 @@ function titleFor(name) {
   if (name === "execute_tool book_after_agenda") return "Cena → reserva autorizada por Agenda";
   if (name === "execute_tool consultar_presupuesto") return "Cena ⇄ Presupuesto · negociación A2A";
   if (name === "execute_tool negociar_cena") return "Cena → negociación: Agenda + Presupuesto A2A";
-  if (name === "a2a discover Presupuesto") return "A2A → descubrir Agent Card";
+  if (name === "a2a discover Presupuesto") return "A2A → obtener Agent Card";
   if (name === "a2a message/send Presupuesto") return "A2A ⇄ message/send · tarea remota";
   if (name.startsWith("invoke_agent")) return `Agente ${name.slice("invoke_agent ".length)}`;
   if (/^(chat|text_completion|generate_content) /.test(name)) return "Agente ⇄ modelo de Foundry";
@@ -159,6 +164,67 @@ function paragraph(className, text) {
   return element;
 }
 
+function prettyContent(content) {
+  if (typeof content !== "string") return JSON.stringify(content, null, 2);
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return content;
+  }
+}
+
+function renderConversation(event) {
+  const item = document.createElement("li");
+  item.className = `conversation-message ${event.role === "assistant" ? "agent-message" : "user-message"}`;
+  const label = document.createElement("strong");
+  label.textContent = `${event.agent} · ${event.role === "assistant" ? "Respuesta" : "Petición"}`;
+  const content = document.createElement("pre");
+  content.textContent = prettyContent(event.content);
+  item.append(label, content);
+  $("conversation-list").append(item);
+  $("conversation").hidden = false;
+}
+
+function addCapabilityItem(list, title, description, metadata) {
+  const item = document.createElement("li");
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  item.append(heading);
+  if (description) item.append(paragraph("capability-description", description));
+  if (metadata) {
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(metadata, null, 2);
+    item.append(pre);
+  }
+  list.append(item);
+}
+
+function renderCapabilities(event) {
+  const list = $("capability-list");
+  const details = event.details || {};
+  if (event.system === "MCP") {
+    for (const tool of details.tools || []) {
+      addCapabilityItem(list, `${tool.name} · herramienta MCP`, tool.description,
+        tool.parameters);
+    }
+  } else if (event.system === "A2A") {
+    addCapabilityItem(list, `${details.name || "Presupuesto"} · Agent Card`,
+      details.description, {
+        version: details.version,
+        protocolVersion: details.protocolVersion,
+        capabilities: details.capabilities,
+      });
+    for (const skill of details.skills || []) {
+      addCapabilityItem(list, `${skill.name || skill.id} · skill A2A`,
+        skill.description, { id: skill.id, tags: skill.tags, examples: skill.examples });
+    }
+  } else {
+    addCapabilityItem(list, event.title, "", details);
+  }
+  $("capabilities").hidden = false;
+}
+
 function showResult(event) {
   const data = event.data;
   $("result").hidden = false;
@@ -209,6 +275,8 @@ function receive(event) {
   if (event.type === "heartbeat") return;
   log.push(event);
   if (event.type === "span_start" || event.type === "span_end") spanEvent(event);
+  if (event.type === "conversation") renderConversation(event);
+  if (event.type === "discovery") renderCapabilities(event);
   if (event.type === "started") status("Conectando con MCP", "running");
   if (event.type === "result") showResult(event);
   if (event.type === "error") {
