@@ -9,6 +9,45 @@ let log = [];
 let timer;
 let started;
 
+async function responseError(response) {
+  const http = `HTTP ${response.status}`;
+  if (response.type === "opaqueredirect" || response.redirected || response.status === 401) {
+    return new Error("La sesión web ha caducado. Recarga la página para iniciar sesión de nuevo.");
+  }
+  const text = await response.text();
+  if (response.headers.get("Content-Type")?.includes("application/json")) {
+    try {
+      const data = JSON.parse(text);
+      if (typeof data?.error === "string" && data.error) return new Error(`${data.error} (${http})`);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      return new Error(`El servidor devolvió JSON incompleto o inválido (${http}). No se ha recibido un resultado.`);
+    }
+  }
+  if (response.status === 403) {
+    return new Error(`Acceso rechazado (${http}). Recarga la página para renovar la sesión. Si persiste, revisa la autorización y la protección de origen de App Service.`);
+  }
+  return new Error(`No se pudo iniciar la ejecución (${http}). El servidor devolvió una respuesta ${text ? "no reconocida" : "vacía"}.`);
+}
+
+async function loadConfig() {
+  const response = await fetch("/api/config", { redirect: "manual" });
+  if (!response.ok) throw await responseError(response);
+  if (!response.headers.get("Content-Type")?.includes("application/json")) {
+    throw new Error("No se pudo iniciar la sesión web. Recarga la página para iniciar sesión de nuevo.");
+  }
+  let config;
+  try {
+    config = await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error(`La configuración de sesión está vacía o incompleta (HTTP ${response.status}). Recarga la página.`);
+  }
+  if (typeof config?.token !== "string" || !config.token) throw new Error("La sesión web no contiene un token válido.");
+  token = config.token;
+  return config;
+}
+
 function status(text, state = "") {
   $("status").textContent = text;
   $("status").dataset.state = state;
@@ -195,9 +234,10 @@ form.addEventListener("submit", async (e) => {
   status("Iniciando", "running");
   updateNodes();
   try {
-    const response = await fetch("/api/run", { method: "POST",
+    await loadConfig();
+    const response = await fetch("/api/run", { method: "POST", redirect: "manual",
       headers: { "Content-Type": "application/json", "X-Demo-Token": token }, body: JSON.stringify(request) });
-    if (!response.ok) throw new Error((await response.json()).error || `Error HTTP ${response.status}`);
+    if (!response.ok) throw await responseError(response);
     if (!response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
       throw new Error("La sesión web ha caducado. Recarga la página para iniciar sesión de nuevo.");
     }
@@ -279,10 +319,8 @@ $("download").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
-fetch("/api/config").then(async (response) => {
-  if (!response.ok) throw new Error("No se pudo iniciar la sesión web.");
-  const config = await response.json();
-  token = config.token;
+setBusy(true);
+loadConfig().then((config) => {
   const cloud = config.hosting === "azure";
   $("hosting-label").textContent = cloud ? "AZURE · ENTRA · MCP REAL" : "LOCAL → AZURE REAL";
   $("hosting-note").textContent = cloud

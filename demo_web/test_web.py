@@ -51,6 +51,7 @@ class WebTest(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertTrue(body)
             self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
+            self.assertEqual(headers["Referrer-Policy"], "same-origin")
         for path in ("/.env", "/../README.md", "/server.py"):
             self.assertEqual(self.request("GET", path)[0], 404)
 
@@ -137,6 +138,20 @@ class WebTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         assert response.json is not None
         self.assertEqual(response.json["hosting"], "azure")
+        headers = {"X-MS-CLIENT-PRINCIPAL-ID": "owner-id",
+                   "X-Demo-Token": response.json["token"],
+                   "Origin": "https://demo.azurewebsites.net"}
+        response = client.post("/api/run", base_url="https://demo.azurewebsites.net",
+                               headers=headers, json=BODY)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Referrer-Policy"], "same-origin")
+        self.assertEqual(json.loads(response.data.splitlines()[-1])["type"], "result")
+        for changed in ({"Origin": "https://attacker.invalid"},
+                        {"X-Demo-Token": "stale-token"},
+                        {"X-MS-CLIENT-PRINCIPAL-ID": "another-user"}):
+            response = client.post("/api/run", base_url="https://demo.azurewebsites.net",
+                                   headers={**headers, **changed}, json=BODY)
+            self.assertEqual(response.status_code, 403)
         self.assertEqual(client.get("/health").status_code, 200)
 
 

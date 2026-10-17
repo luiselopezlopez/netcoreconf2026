@@ -174,6 +174,7 @@ Pruebas locales del backend, sin consumo Azure:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest demo_web.test_web
+node --test .\demo_web\test_app.cjs
 ```
 
 ## Demo 3: Presupuesto remoto por Agent2Agent
@@ -298,6 +299,15 @@ Verificacion del 2026-10-16: `/health` devuelve HTTP 200 con
 redirigen a Microsoft Entra (HTTP 302). La prueba completa desde la web
 de Azure queda pendiente de iniciar sesion interactivamente; no se ha
 verificado aun una reserva ejecutada desde ese hosting.
+
+Si la web devuelve un rechazo HTTP antes de mostrar llamadas, el registro
+indica el codigo aunque Azure no devuelva JSON. Una sesion caducada requiere
+recargar e iniciar sesion; el token de demo se renueva antes de cada ejecucion
+para tolerar reinicios del servidor. No se reenvian reservas automaticamente.
+La politica `Referrer-Policy: same-origin` conserva `Referer` para las
+peticiones al propio sitio, compatible con la comprobacion CSRF de EasyAuth,
+sin enviarlo a otros origenes. No desactives EasyAuth ni la proteccion de origen
+para resolver un HTTP 403.
 
 La web se despliega aparte de las Functions, con
 [web.bicep](infra/web.bicep). No hay que ejecutar `azd provision` sobre

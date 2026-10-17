@@ -142,7 +142,7 @@ def create_app(runner=organize, *, port=8080, cloud_host=None, allowed_user=None
     def headers(response):
         response.headers.update({
             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "no-referrer",
+            "Referrer-Policy": "same-origin",
             "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
             "style-src 'self'; connect-src 'self'; img-src 'self'; "
             "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
