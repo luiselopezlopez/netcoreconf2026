@@ -139,8 +139,7 @@ class WebTest(unittest.TestCase):
     def test_cloud_allows_anonymous_access(self):
         cloud = create_app(fake_runner, cloud_host="demo.azurewebsites.net")
         client = cloud.test_client()
-        response = client.get("/api/config", base_url="https://demo.azurewebsites.net",
-                              )
+        response = client.get("/api/config", base_url="https://demo.azurewebsites.net")
         self.assertEqual(response.status_code, 200)
         assert response.json is not None
         self.assertEqual(response.json["hosting"], "azure")
