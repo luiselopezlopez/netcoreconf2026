@@ -119,15 +119,13 @@ def configure_tracing():
     return provider
 
 
-def create_app(runner=organize, *, port=8080, cloud_host=None, allowed_user=None):
+def create_app(runner=organize, *, port=8080, cloud_host=None):
     app = Flask(__name__, static_folder=None)
     app.config["MAX_CONTENT_LENGTH"] = 4096
     demo = Demo(runner)
     app.extensions["demo"] = demo
     hosts = {cloud_host} if cloud_host else {f"127.0.0.1:{port}", f"localhost:{port}"}
     scheme = "https" if cloud_host else "http"
-    if cloud_host and not allowed_user:
-        raise ValueError("Falta el usuario autorizado para el hosting Azure.")
 
     @app.before_request
     def protect():
@@ -135,8 +133,6 @@ def create_app(runner=organize, *, port=8080, cloud_host=None, allowed_user=None
             return None
         if request.host not in hosts:
             return jsonify(error="Host no permitido."), 403
-        if cloud_host and request.headers.get("X-MS-CLIENT-PRINCIPAL-ID") != allowed_user:
-            return jsonify(error="Inicia sesion con el usuario autorizado."), 403
         if request.method == "POST" and (
             request.headers.get("Origin", f"{scheme}://{request.host}") != f"{scheme}://{request.host}"
             or not secrets.compare_digest(request.headers.get("X-Demo-Token", ""), demo.token)
