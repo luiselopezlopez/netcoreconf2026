@@ -136,21 +136,15 @@ class WebTest(unittest.TestCase):
         self.assertNotIn(b"private-error-detail", body)
         self.assertFalse(self.demo.run_lock.locked())
 
-    def test_cloud_requires_identity(self):
-        with self.assertRaises(ValueError):
-            create_app(fake_runner, cloud_host="demo.azurewebsites.net")
-        cloud = create_app(fake_runner, cloud_host="demo.azurewebsites.net", allowed_user="owner-id")
+    def test_cloud_allows_anonymous_access(self):
+        cloud = create_app(fake_runner, cloud_host="demo.azurewebsites.net")
         client = cloud.test_client()
-        self.assertEqual(client.get("/", base_url="https://demo.azurewebsites.net").status_code, 403)
-        self.assertEqual(client.get("/", base_url="https://demo.azurewebsites.net",
-            headers={"X-MS-CLIENT-PRINCIPAL-ID": "another-user"}).status_code, 403)
-        response = client.get("/api/config", base_url="https://demo.azurewebsites.net",
-                              headers={"X-MS-CLIENT-PRINCIPAL-ID": "owner-id"})
+        response = client.get("/api/config", base_url="https://demo.azurewebsites.net")
         self.assertEqual(response.status_code, 200)
         assert response.json is not None
         self.assertEqual(response.json["hosting"], "azure")
-        headers = {"X-MS-CLIENT-PRINCIPAL-ID": "owner-id",
-                   "X-Demo-Token": response.json["token"],
+        self.assertEqual(client.get("/", base_url="https://demo.azurewebsites.net").status_code, 200)
+        headers = {"X-Demo-Token": response.json["token"],
                    "Origin": "https://demo.azurewebsites.net"}
         response = client.post("/api/run", base_url="https://demo.azurewebsites.net",
                                headers=headers, json=BODY)
@@ -158,8 +152,7 @@ class WebTest(unittest.TestCase):
         self.assertEqual(response.headers["Referrer-Policy"], "same-origin")
         self.assertEqual(json.loads(response.data.splitlines()[-1])["type"], "result")
         for changed in ({"Origin": "https://attacker.invalid"},
-                        {"X-Demo-Token": "stale-token"},
-                        {"X-MS-CLIENT-PRINCIPAL-ID": "another-user"}):
+                        {"X-Demo-Token": "stale-token"}):
             response = client.post("/api/run", base_url="https://demo.azurewebsites.net",
                                    headers={**headers, **changed}, json=BODY)
             self.assertEqual(response.status_code, 403)

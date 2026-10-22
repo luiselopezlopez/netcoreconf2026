@@ -10,9 +10,8 @@ grupo `rg-poliamor-demo`, region `spaincentral`.
 La demo MCP ya busca y reserva restaurantes ficticios mediante el agente
 Cena. La web local y la web en Azure permiten ver trazas del framework en directo.
 Agenda y negociacion A2A se han probado entre las Functions desplegadas,
-con el modelo real de Foundry y MCP de Azure. La web se ha actualizado y
-conserva la autenticacion Entra; su ensayo completo en Azure requiere
-iniciar sesion interactivamente y sigue pendiente.
+con el modelo real de Foundry y MCP de Azure. La configuracion de la web permite
+acceso anonimo para que cualquier persona pueda probar la demo.
 Fases del proyecto:
 
 1. Esqueleto, infraestructura y tres Functions funcionando.
@@ -170,7 +169,9 @@ El frontend usa solo archivos locales, sin CDN ni fuentes externas.
 En modo local escucha exclusivamente en loopback, exige Host/origen local y un token de
 sesion para ejecutar, limita el cuerpo y permite una sola ejecucion simultanea.
 No publicar el servidor de desarrollo directamente en Internet; para Azure
-se usa la configuracion protegida descrita mas abajo. Argumentos y
+se usa App Service con acceso anonimo. El token de sesion y la comprobacion
+de origen evitan peticiones ajenas desde navegadores, pero no autentican a los
+visitantes: cualquiera puede usar la demo publica. Argumentos y
 resultados de herramientas se capturan **solo en el proceso web**;
 usar datos ficticios. No hay exportador de telemetria ni historial persistente.
 Cerrar la pestana no cancela el agente: esperar a que termine antes de
@@ -265,7 +266,7 @@ azd deploy --all --environment poliamor-demo --no-prompt
 
 El provision actualiza tambien la configuracion de escala de Presupuesto.
 La web existente recibe su URL/clave A2A mediante el hook postdeploy, sin
-recrear su registro Entra ni desprotegerla. Para una web nueva se sigue
+necesitar un registro Entra. Para una web nueva se sigue
 usando [provision-demo-web.ps1](scripts/provision-demo-web.ps1).
 No ejecutar los comandos durante una demo en curso.
 
@@ -296,24 +297,18 @@ Presupuesto publicado en Azure. No publicar el host local en Internet.
 
 Web desplegada en `poliamor-demo`:
 **https://web-poliamor-wnmjunhobdnpc.azurewebsites.net**.
-Abrirla e iniciar sesion con la misma cuenta de Microsoft Entra usada para
-provisionar el entorno. Elegir **Con reserva** y pulsar **Organizar cena**
-para seguir las llamadas reales al modelo y a las herramientas MCP.
+Al publicar esta configuracion, se podra abrir sin iniciar sesion. Elegir
+**Con reserva** y pulsar **Organizar cena** para seguir las llamadas reales
+al modelo y a las herramientas MCP.
 
-Verificacion del 2026-10-16: `/health` devuelve HTTP 200 con
-`{"service":"demo-web","status":"ok"}`; `/` y `/api/config` sin autenticar
-redirigen a Microsoft Entra (HTTP 302). La prueba completa desde la web
-de Azure queda pendiente de iniciar sesion interactivamente; no se ha
-verificado aun una reserva ejecutada desde ese hosting.
+Tras desplegar el cambio, `/health`, `/` y `/api/config` deben devolver HTTP 200
+sin autenticar. El test local comprueba que la ruta publica tambien permite
+ejecutar la demo con el token de sesion.
 
 Si la web devuelve un rechazo HTTP antes de mostrar llamadas, el registro
-indica el codigo aunque Azure no devuelva JSON. Una sesion caducada requiere
-recargar e iniciar sesion; el token de demo se renueva antes de cada ejecucion
-para tolerar reinicios del servidor. No se reenvian reservas automaticamente.
-La politica `Referrer-Policy: same-origin` conserva `Referer` para las
-peticiones al propio sitio, compatible con la comprobacion CSRF de EasyAuth,
-sin enviarlo a otros origenes. No desactives EasyAuth ni la proteccion de origen
-para resolver un HTTP 403.
+indica el codigo aunque Azure no devuelva JSON. El token de demo se renueva
+antes de cada ejecucion para tolerar reinicios del servidor. No se reenvian
+reservas automaticamente.
 
 La web se despliega aparte de las Functions, con
 [web.bicep](infra/web.bicep). No hay que ejecutar `azd provision` sobre
@@ -335,21 +330,17 @@ y que `/health` devuelve 200. Durante el primer despliegue hubo respuestas
 503 hasta completar la compilacion y superar el sondeo de arranque.
 
 El script crea un App Service Linux **B1 / Python 3.12** en el mismo grupo
-y region, y un registro Microsoft Entra single-tenant dedicado. Se necesita
-permiso para crear aplicaciones Entra, ademas de recursos y asignaciones RBAC.
-El login se restringe al usuario que ejecuta el script (object ID).
-El servidor tambien comprueba el principal inyectado por EasyAuth: no basta
-con conocer la URL. `/health` es publico y solo devuelve el estado del proceso.
+y region. No crea aplicaciones ni credenciales Entra: el acceso web es anonimo.
+El endpoint `/health` devuelve unicamente el estado del proceso.
 
 En Azure se usa Gunicorn (un worker, ocho threads, una sola ejecucion de demo
 simultanea) y la identidad administrada de la web, con Foundry User solo en
 el proyecto `cena`. `AZURE_TOKEN_CREDENTIALS=ManagedIdentityCredential`
 restringe `DefaultAzureCredential` a esa unica credencial.
-La clave MCP y la credencial Entra se guardan solo en app settings, nunca
-en el frontend, outputs o ZIP. El fichero temporal de parametros se elimina
-al terminar, tambien si falla el despliegue. La credencial de login dura un
-ano; repetir el script antes de caducar la renueva si quedan menos de 30 dias.
-No se deshabilita la autenticacion para resolver fallos de acceso.
+Las claves MCP y A2A se guardan solo en app settings, nunca en el frontend,
+outputs o ZIP. El fichero temporal de parametros se elimina al terminar,
+tambien si falla el despliegue. La web publica consume recursos compartidos:
+usar unicamente datos ficticios y no publicar informacion sensible.
 
 [package-demo-web.ps1](scripts/package-demo-web.ps1), hook prepackage de azd,
 prepara una carpeta ignorada con una lista cerrada de archivos:
